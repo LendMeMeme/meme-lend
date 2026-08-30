@@ -1,0 +1,16 @@
+services:
+  mongodb:
+    image: mongo:8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - meme_lend_mongodb:/data/db
+    command: ["mongod", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  meme_lend_mongodb:

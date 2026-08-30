@@ -1,0 +1,2228 @@
+{
+  "address": "9VHZhNZkrsocLmafGBmbG2mCiAnwA1WaBTG1aNb2kr4j",
+  "metadata": {
+    "name": "meme_lending",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Isolated memecoin/USDC lending markets"
+  },
+  "instructions": [
+    {
+      "name": "accrue_interest",
+      "discriminator": [47, 40, 115, 198, 91, 12, 222, 49],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "relations": ["market"]
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "borrow_usdc",
+      "discriminator": [31, 120, 217, 32, 182, 137, 251, 34],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true
+        },
+        {
+          "name": "global_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": ["borrower_position", "oracle_observation"]
+        },
+        {
+          "name": "borrower_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [98, 111, 114, 114, 111, 119, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "borrower"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_configuration",
+          "relations": ["market"]
+        },
+        {
+          "name": "oracle_observation",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [111, 98, 115, 101, 114, 118, 97, 116, 105, 111, 110]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "borrower_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_market_creator_fees",
+      "discriminator": [12, 227, 152, 98, 143, 136, 181, 200],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "creator_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_market",
+      "discriminator": [103, 226, 97, 235, 200, 188, 251, 254],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "global_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [109, 97, 114, 107, 101, 116]
+              },
+              {
+                "kind": "arg",
+                "path": "args.config_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_configuration",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [111, 114, 97, 99, 108, 101]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "first_loss_reserve",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 115, 101, 114, 118, 101]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "market_authority"
+              },
+              {
+                "kind": "account",
+                "path": "loan_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "loan_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19,
+                153, 218, 255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "market_authority"
+              },
+              {
+                "kind": "account",
+                "path": "collateral_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19,
+                153, 218, 255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "reserve_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 115, 101, 114, 118, 101, 45, 118, 97, 117, 108, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deposit_collateral",
+      "discriminator": [156, 131, 142, 116, 146, 247, 162, 120],
+      "accounts": [
+        {
+          "name": "borrower",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "borrower_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [98, 111, 114, 114, 111, 119, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "borrower"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "borrower_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit_first_loss_reserve",
+      "discriminator": [8, 127, 69, 140, 96, 73, 78, 131],
+      "accounts": [
+        {
+          "name": "contributor",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": ["first_loss_reserve"]
+        },
+        {
+          "name": "first_loss_reserve",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 115, 101, 114, 118, 101]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "contributor_usdc",
+          "writable": true
+        },
+        {
+          "name": "reserve_vault",
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fund_lender_rewards",
+      "discriminator": [179, 167, 210, 104, 157, 250, 145, 241],
+      "accounts": [
+        {
+          "name": "funder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "reward_mint"
+        },
+        {
+          "name": "market_rewards",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 119, 97, 114, 100, 115]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "reward_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 119, 97, 114, 100, 45, 118, 97, 117, 108, 116]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "reward_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "funder_rewards",
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_protocol",
+      "discriminator": [188, 233, 252, 106, 134, 146, 202, 91],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "protocol_fee_recipient"
+        },
+        {
+          "name": "global_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_oracle_age_seconds",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "liquidate",
+      "discriminator": [223, 179, 226, 125, 48, 46, 39, 74],
+      "accounts": [
+        {
+          "name": "liquidator",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": ["borrower_position", "oracle_observation", "first_loss_reserve"]
+        },
+        {
+          "name": "borrower_position",
+          "writable": true
+        },
+        {
+          "name": "oracle_configuration",
+          "relations": ["market"]
+        },
+        {
+          "name": "oracle_observation",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [111, 98, 115, 101, 114, 118, 97, 116, 105, 111, 110]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "first_loss_reserve",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 115, 101, 114, 118, 101]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "liquidator_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidator_collateral",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "reserve_vault",
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "requested_repay",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "pause_market",
+      "discriminator": [216, 238, 4, 164, 65, 11, 162, 91],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "repay_usdc",
+      "discriminator": [20, 104, 199, 119, 196, 22, 114, 79],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": ["borrower_position"]
+        },
+        {
+          "name": "borrower_position",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "payer_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "requested_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "submit_oracle_observation",
+      "discriminator": [103, 174, 144, 247, 90, 40, 190, 101],
+      "accounts": [
+        {
+          "name": "publisher",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": ["oracle_configuration"]
+        },
+        {
+          "name": "oracle_configuration"
+        },
+        {
+          "name": "oracle_observation",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [111, 98, 115, 101, 114, 118, 97, 116, 105, 111, 110]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "price",
+          "type": "u128"
+        },
+        {
+          "name": "confidence_bps",
+          "type": "u16"
+        },
+        {
+          "name": "deviation_bps",
+          "type": "u16"
+        },
+        {
+          "name": "max_recoverable_usdc",
+          "type": "u64"
+        },
+        {
+          "name": "published_at",
+          "type": "i64"
+        },
+        {
+          "name": "sequence",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "supply_usdc",
+      "discriminator": [178, 205, 86, 31, 58, 45, 54, 199],
+      "accounts": [
+        {
+          "name": "lender",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "lender_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 101, 110, 100, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "lender"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "lender_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_collateral",
+      "discriminator": [115, 135, 168, 106, 139, 214, 138, 150],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": ["borrower_position", "oracle_observation"]
+        },
+        {
+          "name": "borrower_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [98, 111, 114, 114, 111, 119, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "borrower"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_configuration",
+          "relations": ["market"]
+        },
+        {
+          "name": "oracle_observation",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [111, 98, 115, 101, 114, 118, 97, 116, 105, 111, 110]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "borrower_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_usdc",
+      "discriminator": [114, 49, 72, 184, 27, 156, 243, 155],
+      "accounts": [
+        {
+          "name": "lender",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "relations": ["lender_position"]
+        },
+        {
+          "name": "lender_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 101, 110, 100, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "lender"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "lender_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u128"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "BorrowerPosition",
+      "discriminator": [22, 15, 23, 98, 200, 151, 249, 66]
+    },
+    {
+      "name": "FirstLossReserve",
+      "discriminator": [84, 186, 19, 24, 120, 12, 61, 83]
+    },
+    {
+      "name": "GlobalConfig",
+      "discriminator": [149, 8, 156, 202, 160, 252, 176, 217]
+    },
+    {
+      "name": "LenderPosition",
+      "discriminator": [165, 98, 244, 204, 209, 158, 88, 19]
+    },
+    {
+      "name": "Market",
+      "discriminator": [219, 190, 213, 55, 0, 227, 198, 154]
+    },
+    {
+      "name": "MarketRewards",
+      "discriminator": [34, 139, 110, 190, 114, 130, 235, 36]
+    },
+    {
+      "name": "OracleConfiguration",
+      "discriminator": [1, 177, 180, 40, 48, 251, 181, 160]
+    },
+    {
+      "name": "OracleObservation",
+      "discriminator": [176, 75, 202, 9, 47, 238, 222, 254]
+    }
+  ],
+  "events": [
+    {
+      "name": "CollateralDeposited",
+      "discriminator": [244, 62, 77, 11, 135, 112, 61, 96]
+    },
+    {
+      "name": "CollateralWithdrawn",
+      "discriminator": [51, 224, 133, 106, 74, 173, 72, 82]
+    },
+    {
+      "name": "CreatorFeesClaimed",
+      "discriminator": [189, 178, 21, 181, 171, 179, 131, 1]
+    },
+    {
+      "name": "FirstLossReserveFunded",
+      "discriminator": [254, 66, 84, 138, 71, 166, 242, 114]
+    },
+    {
+      "name": "InterestAccrued",
+      "discriminator": [79, 218, 196, 73, 32, 148, 138, 71]
+    },
+    {
+      "name": "LenderRewardsFunded",
+      "discriminator": [30, 48, 72, 233, 123, 184, 156, 43]
+    },
+    {
+      "name": "LiquiditySupplied",
+      "discriminator": [31, 41, 157, 195, 234, 245, 107, 235]
+    },
+    {
+      "name": "LiquidityWithdrawn",
+      "discriminator": [240, 120, 73, 139, 154, 31, 218, 68]
+    },
+    {
+      "name": "MarketCreated",
+      "discriminator": [88, 184, 130, 231, 226, 84, 6, 58]
+    },
+    {
+      "name": "MarketPauseChanged",
+      "discriminator": [201, 237, 60, 219, 84, 169, 111, 59]
+    },
+    {
+      "name": "OracleObserved",
+      "discriminator": [251, 25, 221, 41, 50, 211, 179, 216]
+    },
+    {
+      "name": "PositionLiquidated",
+      "discriminator": [40, 107, 90, 214, 96, 30, 61, 128]
+    },
+    {
+      "name": "ProtocolInitialized",
+      "discriminator": [173, 122, 168, 254, 9, 118, 76, 132]
+    },
+    {
+      "name": "UsdcBorrowed",
+      "discriminator": [0, 201, 119, 117, 182, 167, 64, 55]
+    },
+    {
+      "name": "UsdcRepaid",
+      "discriminator": [13, 43, 238, 20, 238, 67, 97, 157]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidParameter",
+      "msg": "The supplied parameter is outside the approved range"
+    },
+    {
+      "code": 6001,
+      "name": "MarketMismatch",
+      "msg": "The account does not belong to this market"
+    },
+    {
+      "code": 6002,
+      "name": "UnsupportedToken",
+      "msg": "The token mint or token program is not approved"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidOracle",
+      "msg": "The oracle configuration is invalid or unavailable"
+    },
+    {
+      "code": 6004,
+      "name": "MathOverflow",
+      "msg": "The requested operation would overflow"
+    },
+    {
+      "code": 6005,
+      "name": "Paused",
+      "msg": "The protocol or market has paused this action"
+    },
+    {
+      "code": 6006,
+      "name": "Unauthorized",
+      "msg": "Only the configured authority may perform this action"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidConfigHash",
+      "msg": "The immutable market configuration does not match its hash"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidVault",
+      "msg": "The vault is not the canonical vault for this market"
+    },
+    {
+      "code": 6009,
+      "name": "OracleUnavailable",
+      "msg": "A risk-increasing action requires a fresh oracle observation"
+    },
+    {
+      "code": 6010,
+      "name": "AmountTooSmall",
+      "msg": "The operation would create a zero-value position"
+    },
+    {
+      "code": 6011,
+      "name": "InsufficientLiquidity",
+      "msg": "The requested amount is not available"
+    },
+    {
+      "code": 6012,
+      "name": "UnhealthyPosition",
+      "msg": "The resulting borrower position would be unhealthy"
+    },
+    {
+      "code": 6013,
+      "name": "PositionHealthy",
+      "msg": "The borrower position is not liquidatable"
+    },
+    {
+      "code": 6014,
+      "name": "ExcessiveFees",
+      "msg": "Fees cannot exceed accrued interest"
+    },
+    {
+      "code": 6015,
+      "name": "UnsupportedTokenExtension",
+      "msg": "The mint uses a Token-2022 extension unsupported by this market"
+    }
+  ],
+  "types": [
+    {
+      "name": "BorrowerPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_amount",
+            "type": "u64"
+          },
+          {
+            "name": "borrow_shares",
+            "type": "u128"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralDeposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "lltv_bps",
+            "type": "u16"
+          },
+          {
+            "name": "liquidation_bonus_bps",
+            "type": "u16"
+          },
+          {
+            "name": "close_factor_bps",
+            "type": "u16"
+          },
+          {
+            "name": "creator_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rate_model",
+            "type": {
+              "defined": {
+                "name": "InterestRateModel"
+              }
+            }
+          },
+          {
+            "name": "market_borrow_cap",
+            "type": "u64"
+          },
+          {
+            "name": "wallet_borrow_cap",
+            "type": "u64"
+          },
+          {
+            "name": "oracle_kind",
+            "type": {
+              "defined": {
+                "name": "OracleKind"
+              }
+            }
+          },
+          {
+            "name": "oracle_max_age_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "oracle_max_confidence_bps",
+            "type": "u16"
+          },
+          {
+            "name": "oracle_max_deviation_bps",
+            "type": "u16"
+          },
+          {
+            "name": "oracle_price_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_sources",
+            "type": {
+              "vec": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreatorFeesClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FirstLossReserve",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "deposited",
+            "type": "u64"
+          },
+          {
+            "name": "absorbed_losses",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FirstLossReserveFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "contributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "approved_loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol_fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_count",
+            "type": "u64"
+          },
+          {
+            "name": "max_oracle_age_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InterestAccrued",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "interest",
+            "type": "u64"
+          },
+          {
+            "name": "borrow_index",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InterestRateModel",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_rate",
+            "type": "u64"
+          },
+          {
+            "name": "target_utilization_bps",
+            "type": "u16"
+          },
+          {
+            "name": "slope_low",
+            "type": "u64"
+          },
+          {
+            "name": "slope_high",
+            "type": "u64"
+          },
+          {
+            "name": "max_borrow_rate",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LenderPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "supply_shares",
+            "type": "u128"
+          },
+          {
+            "name": "reward_index_checkpoint",
+            "type": "u128"
+          },
+          {
+            "name": "reward_owed",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LenderRewardsFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "funder",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquiditySupplied",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "lender",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidityWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "lender",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "global_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidity_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_configuration",
+            "type": "pubkey"
+          },
+          {
+            "name": "config_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "lltv_bps",
+            "type": "u16"
+          },
+          {
+            "name": "liquidation_bonus_bps",
+            "type": "u16"
+          },
+          {
+            "name": "close_factor_bps",
+            "type": "u16"
+          },
+          {
+            "name": "creator_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "protocol_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "rate_model",
+            "type": {
+              "defined": {
+                "name": "InterestRateModel"
+              }
+            }
+          },
+          {
+            "name": "market_borrow_cap",
+            "type": "u64"
+          },
+          {
+            "name": "wallet_borrow_cap",
+            "type": "u64"
+          },
+          {
+            "name": "total_supply_shares",
+            "type": "u128"
+          },
+          {
+            "name": "total_borrow_shares",
+            "type": "u128"
+          },
+          {
+            "name": "borrow_index",
+            "type": "u128"
+          },
+          {
+            "name": "total_debt",
+            "type": "u128"
+          },
+          {
+            "name": "bad_debt",
+            "type": "u64"
+          },
+          {
+            "name": "creator_fees_claimable",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_fees_claimable",
+            "type": "u64"
+          },
+          {
+            "name": "last_accrual_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "borrowing_paused",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "authority_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "config_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "custom_oracle_high_risk",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketPauseChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrowing_paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketRewards",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_index",
+            "type": "u128"
+          },
+          {
+            "name": "undistributed_rewards",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleConfiguration",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "OracleKind"
+              }
+            }
+          },
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_age_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "max_confidence_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_deviation_bps",
+            "type": "u16"
+          },
+          {
+            "name": "price_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "source_count",
+            "type": "u8"
+          },
+          {
+            "name": "sources",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "custom_high_risk",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Pyth"
+          },
+          {
+            "name": "Switchboard"
+          },
+          {
+            "name": "DexTwap"
+          },
+          {
+            "name": "AggregatedPools"
+          },
+          {
+            "name": "Custom"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleObservation",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "publisher",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u128"
+          },
+          {
+            "name": "confidence_bps",
+            "type": "u16"
+          },
+          {
+            "name": "deviation_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_recoverable_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "published_at",
+            "type": "i64"
+          },
+          {
+            "name": "sequence",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleObserved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "publisher",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u128"
+          },
+          {
+            "name": "max_recoverable_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "published_at",
+            "type": "i64"
+          },
+          {
+            "name": "sequence",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionLiquidated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidator",
+            "type": "pubkey"
+          },
+          {
+            "name": "repaid",
+            "type": "u64"
+          },
+          {
+            "name": "collateral_seized",
+            "type": "u64"
+          },
+          {
+            "name": "bad_debt",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_absorbed",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UsdcBorrowed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "debt_shares",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UsdcRepaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "debt_shares",
+            "type": "u128"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+pub const BPS_DENOMINATOR: u64 = 10_000;
+pub const RATE_SCALE: u128 = 1_000_000_000_000_000_000;
+pub const SECONDS_PER_YEAR: u64 = 31_536_000;
+pub const MAX_TOKEN_DECIMALS: u8 = 18;
+pub const MAX_ORACLE_SOURCES: usize = 5;
+pub const MAX_ORACLE_SOURCE_DATA: usize = MAX_ORACLE_SOURCES * 32;
+pub const MAX_LLTV_BPS: u16 = 9_000;
+pub const MAX_LIQUIDATION_BONUS_BPS: u16 = 2_000;
+pub const MAX_TOTAL_FEE_BPS: u16 = 3_000;
+pub const ALLOWED_LLTV_BPS: [u16; 3] = [5_000, 6_500, 7_500];
+
+// Annual rates use RATE_SCALE. These immutable presets are intentionally explicit so
+// market creators cannot smuggle an unreviewed curve through the UI or SDK.
+pub const STANDARD_BASE_RATE: u64 = 20_000_000_000_000_000;
+pub const STANDARD_TARGET_UTILIZATION_BPS: u16 = 8_000;
+pub const STANDARD_SLOPE_LOW: u64 = 180_000_000_000_000_000;
+pub const STANDARD_SLOPE_HIGH: u64 = 2_000_000_000_000_000_000;
+pub const STANDARD_MAX_RATE: u64 = 2_200_000_000_000_000_000;
+pub const CONSERVATIVE_BASE_RATE: u64 = 50_000_000_000_000_000;
+pub const CONSERVATIVE_TARGET_UTILIZATION_BPS: u16 = 7_000;
+pub const CONSERVATIVE_SLOPE_LOW: u64 = 250_000_000_000_000_000;
+pub const CONSERVATIVE_SLOPE_HIGH: u64 = 3_000_000_000_000_000_000;
+pub const CONSERVATIVE_MAX_RATE: u64 = 3_300_000_000_000_000_000;

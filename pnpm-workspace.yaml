@@ -1,0 +1,21 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tests/*"
+
+allowBuilds:
+  "@stellar/stellar-sdk": set this to true or false
+  bigint-buffer: true
+  blake-hash: set this to true or false
+  bufferutil: true
+  esbuild: true
+  protobufjs: set this to true or false
+  sharp: true
+  tiny-secp256k1: set this to true or false
+  usb: set this to true or false
+  utf-8-validate: true
+
+onlyBuiltDependencies:
+  - bufferutil
+  - esbuild
+  - utf-8-validate

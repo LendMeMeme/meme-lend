@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+.next/
+target/
+dist/
+coverage/
+.turbo/
+.anchor/
+*.tsbuildinfo
+.env
+.env.local
+test-ledger/
+*.log
+!.env.example
