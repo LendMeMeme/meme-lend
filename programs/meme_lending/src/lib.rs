@@ -7,6 +7,26 @@ use anchor_spl::{
 };
 use spl_token_2022::extension::{BaseStateWithExtensions, StateWithExtensions};
 
+#[cfg(not(feature = "no-entrypoint"))]
+solana_security_txt::security_txt! {
+    name: "Meme Lend",
+    project_url: "https://meme-lendweb-production.up.railway.app",
+    contacts: "link:https://github.com/CryptoDungeonMaster/meme-lend/security/advisories/new",
+    policy: "https://github.com/CryptoDungeonMaster/meme-lend/blob/main/SECURITY.md",
+    preferred_languages: "en",
+    source_code: "https://github.com/CryptoDungeonMaster/meme-lend"
+}
+
+#[cfg(all(test, not(feature = "no-entrypoint")))]
+mod security_metadata_tests {
+    #[test]
+    fn embeds_responsible_disclosure_metadata() {
+        assert!(super::SECURITY_TXT.contains("Meme Lend"));
+        assert!(super::SECURITY_TXT.contains("security/advisories/new"));
+        assert!(super::SECURITY_TXT.contains("SECURITY.md"));
+    }
+}
+
 pub mod constants;
 pub mod errors;
 pub mod events;

@@ -41,6 +41,10 @@ Native Pyth, Switchboard, and DEX adapter parsers are also a launch blocker; see
 - Multisig upgrade authority and timelock are active; no developer wallet controls upgrades alone.
 - Incident contacts, pause procedure, and public status channel are documented.
 
+The reproducible build and post-deployment verification procedure is documented in
+[`verifiable-build.md`](./verifiable-build.md). Publish the exact source revision before claiming
+that an on-chain binary is independently verifiable.
+
 ## Environments
 
 Localnet uses disposable keys and mints. Devnet uses a dedicated multisig and verified public RPC

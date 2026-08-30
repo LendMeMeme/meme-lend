@@ -1,0 +1,53 @@
+name: Verifiable Solana program
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "programs/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Anchor.toml"
+      - ".github/workflows/verifiable-program.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.89.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the pinned Anchor CLI
+        run: cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
+
+      - name: Build in Anchor's reproducible container
+        run: anchor build --verifiable
+
+      - name: Verify embedded security metadata
+        run: |
+          cargo install query-security-txt --locked
+          query-security-txt target/verifiable/meme_lending.so | tee target/verifiable/security.txt
+
+      - name: Record binary digest
+        run: sha256sum target/verifiable/meme_lending.so | tee target/verifiable/meme_lending.so.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meme-lending-verifiable-${{ github.sha }}
+          path: |
+            target/verifiable/meme_lending.so
+            target/verifiable/meme_lending.so.sha256
+            target/verifiable/security.txt
+            target/idl/meme_lending.json
+          if-no-files-found: error
+          retention-days: 90

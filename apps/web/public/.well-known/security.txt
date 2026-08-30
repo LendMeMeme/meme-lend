@@ -1,0 +1,4 @@
+Contact: https://github.com/CryptoDungeonMaster/meme-lend/security/advisories/new
+Policy: https://github.com/CryptoDungeonMaster/meme-lend/blob/main/SECURITY.md
+Preferred-Languages: en
+Canonical: https://meme-lendweb-production.up.railway.app/.well-known/security.txt
