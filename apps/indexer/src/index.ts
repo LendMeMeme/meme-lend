@@ -85,7 +85,7 @@ const api = createServer(async (request, response) => {
     );
   }
 });
-api.listen(Number(process.env.PORT ?? "8787"), process.env.HOST ?? "127.0.0.1");
+api.listen(Number(process.env.PORT ?? "8787"), process.env.HOST ?? "0.0.0.0");
 
 async function ingestSignature(
   info: Awaited<ReturnType<Connection["getSignaturesForAddress"]>>[number],
