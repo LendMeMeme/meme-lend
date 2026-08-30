@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { AnchorProvider, BN, Wallet } from "@coral-xyz/anchor";
+import anchor from "@coral-xyz/anchor";
+import type { BN as BNType } from "@coral-xyz/anchor";
 import { createMemeLendProgram, marketAuthorityPda } from "@meme-lend/sdk";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -9,6 +10,8 @@ import {
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { readFile } from "node:fs/promises";
 import { evaluateHealth, observationIsFresh } from "./health.js";
+
+const { AnchorProvider, BN, Wallet } = anchor;
 
 const connection = new Connection(
   process.env.SOLANA_RPC_HTTP ?? "http://127.0.0.1:8899",
@@ -38,14 +41,14 @@ for (;;) {
       const position = record.account as unknown as {
         market: PublicKey;
         owner: PublicKey;
-        collateralAmount: BN;
-        borrowShares: BN;
+        collateralAmount: BNType;
+        borrowShares: BNType;
       };
       if (position.borrowShares.isZero()) continue;
       const marketKey = position.market;
       const market = (await program.account.market.fetch(marketKey)) as unknown as Record<
         string,
-        PublicKey | BN | number
+        PublicKey | BNType | number
       >;
       const oracleConfiguration = new PublicKey(market.oracleConfiguration as PublicKey);
       const oracle = (await program.account.oracleConfiguration.fetch(
@@ -57,7 +60,7 @@ for (;;) {
       );
       const observation = (await program.account.oracleObservation.fetch(
         oracleObservation,
-      )) as unknown as { price: BN; publishedAt: BN };
+      )) as unknown as { price: BNType; publishedAt: BNType };
       if (
         !observationIsFresh(
           BigInt(Math.floor(Date.now() / 1000)),
@@ -75,7 +78,7 @@ for (;;) {
       ).decimals;
       const health = evaluateHealth({
         borrowShares: BigInt(position.borrowShares.toString()),
-        borrowIndex: BigInt((market.borrowIndex as BN).toString()),
+        borrowIndex: BigInt((market.borrowIndex as BNType).toString()),
         collateralAmount: BigInt(position.collateralAmount.toString()),
         collateralDecimals: decimals,
         price: BigInt(observation.price.toString()),

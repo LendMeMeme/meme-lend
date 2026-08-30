@@ -1,12 +1,14 @@
-import { BorshAccountsCoder, BN } from "@coral-xyz/anchor";
+import anchor from "@coral-xyz/anchor";
+import type { BN as BNType } from "@coral-xyz/anchor";
 import type { MemeLendDatabase } from "@meme-lend/database";
 import { MEME_LEND_IDL } from "@meme-lend/sdk";
 import type { MarketView, OracleKind } from "@meme-lend/shared";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { classifyMarket } from "./classification.js";
 
+const { BorshAccountsCoder, BN } = anchor;
 const coder = new BorshAccountsCoder(MEME_LEND_IDL);
-const integer = (value: BN | number) => BigInt(value instanceof BN ? value.toString() : value);
+const integer = (value: BNType | number) => BigInt(value instanceof BN ? value.toString() : value);
 const oracleName = (value: Record<string, unknown>): OracleKind => {
   const name = Object.keys(value)[0] ?? "custom";
   const names: Record<string, OracleKind> = {
@@ -54,12 +56,12 @@ export async function refreshMarket(
     (await connection.getTokenAccountBalance(market.liquidityVault as PublicKey, "finalized")).value
       .amount,
   );
-  const debt = integer(market.totalDebt as BN);
+  const debt = integer(market.totalDebt as BNType);
   const supplied =
     cash +
     debt -
-    integer(market.creatorFeesClaimable as BN) -
-    integer(market.protocolFeesClaimable as BN);
+    integer(market.creatorFeesClaimable as BNType) -
+    integer(market.protocolFeesClaimable as BNType);
   const utilizationBps = cash + debt === 0n ? 0 : Number((debt * 10_000n) / (cash + debt));
   const firstEvent = await database
     .transactions()
@@ -74,7 +76,7 @@ export async function refreshMarket(
       actor: { $ne: null },
     })
   ).length;
-  const publishedAt = observation ? Number(integer(observation.publishedAt as BN)) : null;
+  const publishedAt = observation ? Number(integer(observation.publishedAt as BNType)) : null;
   const now = Math.floor(Date.now() / 1000);
   const fresh =
     publishedAt !== null &&
@@ -84,7 +86,7 @@ export async function refreshMarket(
   const ageDays = firstEvent?.blockTime
     ? Math.floor((Date.now() - new Date(firstEvent.blockTime).getTime()) / 86_400_000)
     : 0;
-  const badDebt = integer(market.badDebt as BN);
+  const badDebt = integer(market.badDebt as BNType);
   const classification = classifyMarket({
     customOracle: kind === "Custom",
     oracleFresh: fresh,
@@ -114,7 +116,7 @@ export async function refreshMarket(
     borrowedUsdc: debt.toString(),
     availableUsdc: cash.toString(),
     utilizationBps,
-    firstLossReserve: integer(reserve.deposited as BN).toString(),
+    firstLossReserve: integer(reserve.deposited as BNType).toString(),
     badDebt: badDebt.toString(),
     oraclePublishedAt: publishedAt === null ? null : new Date(publishedAt * 1000).toISOString(),
     collateralLiquidityUsd: null,
@@ -125,14 +127,16 @@ export async function refreshMarket(
   await database.upsertMarket(view);
   if (observation)
     await database.upsertObservation({
-      id: `${marketAddress}:${integer(observation.sequence as BN)}`,
+      id: `${marketAddress}:${integer(observation.sequence as BNType)}`,
       market: marketAddress,
       publisher: (observation.publisher as PublicKey).toBase58(),
-      price: integer(observation.price as BN).toString(),
+      price: integer(observation.price as BNType).toString(),
       confidenceBps: Number(observation.confidenceBps),
       deviationBps: Number(observation.deviationBps),
-      maxRecoverableUsdc: integer(observation.maxRecoverableUsdc as BN).toString(),
-      publishedAt: new Date(Number(integer(observation.publishedAt as BN)) * 1000).toISOString(),
+      maxRecoverableUsdc: integer(observation.maxRecoverableUsdc as BNType).toString(),
+      publishedAt: new Date(
+        Number(integer(observation.publishedAt as BNType)) * 1000,
+      ).toISOString(),
       slot,
     });
 }

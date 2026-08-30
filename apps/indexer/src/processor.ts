@@ -1,12 +1,15 @@
 import type { ConfirmedSignatureInfo, ParsedTransactionWithMeta } from "@solana/web3.js";
 import type { IndexedTransaction } from "@meme-lend/shared";
-import { BorshEventCoder, BN } from "@coral-xyz/anchor";
+import anchor from "@coral-xyz/anchor";
+import type { BN as BNType } from "@coral-xyz/anchor";
 import { MEME_LEND_IDL } from "@meme-lend/sdk";
+
+const { BorshEventCoder, BN } = anchor;
 
 const eventCoder = new BorshEventCoder(MEME_LEND_IDL);
 
 function jsonValue(value: unknown): unknown {
-  if (BN.isBN(value)) return (value as BN).toString(10);
+  if (BN.isBN(value)) return (value as BNType).toString(10);
   if (value && typeof value === "object" && "toBase58" in value) {
     const toBase58 = (value as { toBase58?: () => string }).toBase58;
     if (typeof toBase58 === "function") return toBase58.call(value);
