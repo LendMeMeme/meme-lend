@@ -1,5 +1,22 @@
 # Deployment and operations
 
+## Railway services
+
+The repository-level `railpack.json` deliberately forces Railpack's Node provider. The monorepo
+also contains a Rust toolchain file for the Solana program, which otherwise causes Railpack to
+select the Rust provider and omit Node and pnpm from application-service images.
+
+Configure the three Railway services with these commands:
+
+| Service    | Build command                               | Start command                               |
+| ---------- | ------------------------------------------- | ------------------------------------------- |
+| Web        | `pnpm --filter @meme-lend/web build`        | `pnpm --filter @meme-lend/web start`        |
+| Indexer    | `pnpm --filter @meme-lend/indexer build`    | `pnpm --filter @meme-lend/indexer start`    |
+| Liquidator | `pnpm --filter @meme-lend/liquidator build` | `pnpm --filter @meme-lend/liquidator start` |
+
+Do not remove the explicit Node provider unless each service is moved to an application-specific
+root directory. Verify that every deployment plan includes Node and pnpm before its build step.
+
 ## Current readiness boundary
 
 Native Rust, TypeScript, indexer/SDK tests, and the Next.js production build are verified locally.
