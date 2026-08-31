@@ -17,3 +17,12 @@ The optimized program may replace the reference deployment candidate only after 
 
 Binary size alone is not an acceptance criterion. The Anchor version remains deployable until all
 gates above pass.
+
+## Implemented optimizations
+
+- The entrypoint uses Pinocchio's allocation-free account parser and `no_allocator` guard.
+- Instruction tags are one byte and reject unknown or truncated input.
+- Numeric instruction and state fields use checked, fixed-width little-endian codecs without Borsh.
+- State accounts use a three-byte version/kind/bump header, preventing cross-account type confusion.
+- Borrower positions occupy 91 bytes and lender positions occupy 107 bytes, with no Rust padding.
+- Lending arithmetic matches the reference program's conservative rounding test vectors.
