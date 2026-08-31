@@ -23,8 +23,8 @@ export function TransactionPanel({
     "idle" | "checking" | "reviewed" | "sending" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
-  const [fee, setFee] = useState<number | null>(null);
   const [reviewed, setReviewed] = useState<Transaction | null>(null);
+  const fieldSuffix = action.toLowerCase().replaceAll(" ", "-");
   const valid =
     Number.isFinite(Number(amount)) &&
     Number(amount) > 0 &&
@@ -48,7 +48,6 @@ export function TransactionPanel({
       const simulation = await connection.simulateTransaction(transaction);
       if (simulation.value.err)
         throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
-      setFee((await connection.getFeeForMessage(transaction.compileMessage(), "confirmed")).value);
       setReviewed(transaction);
       setMessage(
         "Simulation succeeded. Review the amount, market, and wallet prompt before submitting.",
@@ -81,11 +80,11 @@ export function TransactionPanel({
     <div className="card panel">
       <h2>{action}</h2>
       <div className="field">
-        <label htmlFor="amount">
+        <label htmlFor={`amount-${fieldSuffix}`}>
           {action === "Withdraw" ? "Supply shares to burn" : "Exact token amount"}
         </label>
         <input
-          id="amount"
+          id={`amount-${fieldSuffix}`}
           inputMode={action === "Withdraw" ? "numeric" : "decimal"}
           value={amount}
           onChange={(e) => {
@@ -103,9 +102,9 @@ export function TransactionPanel({
       </div>
       {!market ? (
         <div className="field">
-          <label htmlFor="market-address">Market address</label>
+          <label htmlFor={`market-address-${fieldSuffix}`}>Market address</label>
           <input
-            id="market-address"
+            id={`market-address-${fieldSuffix}`}
             value={marketInput}
             onChange={(event) => {
               setMarketInput(event.target.value);
@@ -118,9 +117,9 @@ export function TransactionPanel({
       ) : null}
       {action === "Liquidate" ? (
         <div className="field">
-          <label htmlFor="borrower">Borrower wallet</label>
+          <label htmlFor={`borrower-${fieldSuffix}`}>Borrower wallet</label>
           <input
-            id="borrower"
+            id={`borrower-${fieldSuffix}`}
             value={borrower}
             onChange={(event) => {
               setBorrower(event.target.value);
@@ -136,10 +135,6 @@ export function TransactionPanel({
         <div className="definition">
           <dt>Market</dt>
           <dd>{selectedMarket || "Select a market"}</dd>
-        </div>
-        <div className="definition">
-          <dt>Network fee</dt>
-          <dd>{fee == null ? "Calculated during simulation" : `${fee} lamports`}</dd>
         </div>
         <div className="definition">
           <dt>Resulting health</dt>

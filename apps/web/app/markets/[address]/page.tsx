@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getMarket } from "@/lib/data";
+import { TransactionPanel } from "@/components/transaction-panel";
 type Props = { params: Promise<{ address: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
@@ -25,28 +25,32 @@ export default async function MarketPage({ params }: Props) {
     );
   if (!result.data) notFound();
   const m = result.data;
+  const tokenLabel =
+    m.collateralSymbol ?? `${m.collateralMint.slice(0, 4)}…${m.collateralMint.slice(-4)}`;
+  const usdc = (raw: string) => `${Number(raw) / 1_000_000} USDC`;
   return (
     <main className="shell">
       <header className="page-head">
         <div className="eyebrow">{m.status} market</div>
-        <h1>{m.collateralSymbol ?? "Unknown token"} / USDC</h1>
+        <h1>{tokenLabel} / USDC</h1>
+        {m.collateralName ? <p className="muted">{m.collateralName}</p> : null}
         <p className="lede">
           Every value below belongs only to this market. Status is discovery metadata, not a safety
           guarantee.
         </p>
-        <div className="actions">
-          <Link className="button primary" href={`/lend/${m.address}`}>
-            Lend USDC
-          </Link>
-          <Link className="button" href={`/borrow/${m.address}`}>
-            Borrow USDC
-          </Link>
-        </div>
       </header>
       <div className="stat-grid">
         <div className="stat">
+          <span>Supply APY</span>
+          <strong>{m.supplyApyBps == null ? "Unavailable" : `${m.supplyApyBps / 100}%`}</strong>
+        </div>
+        <div className="stat">
+          <span>Borrow APY</span>
+          <strong>{m.borrowApyBps == null ? "Unavailable" : `${m.borrowApyBps / 100}%`}</strong>
+        </div>
+        <div className="stat">
           <span>Available USDC</span>
-          <strong>{m.availableUsdc}</strong>
+          <strong>{usdc(m.availableUsdc)}</strong>
         </div>
         <div className="stat">
           <span>Utilization</span>
@@ -57,6 +61,40 @@ export default async function MarketPage({ params }: Props) {
           <strong>{m.firstLossReserve}</strong>
         </div>
       </div>
+      <section className="section">
+        <div className="eyebrow">Lend and borrow</div>
+        <h2>Use this isolated market.</h2>
+        <div className="grid section">
+          <div className="span-6">
+            <TransactionPanel
+              action="Supply"
+              market={m.address}
+              risk="You accept this market’s collateral, oracle, liquidity, and liquidation risk. This is also how to add initial USDC liquidity after market creation."
+            />
+          </div>
+          <div className="span-6">
+            <TransactionPanel
+              action="Deposit collateral"
+              market={m.address}
+              risk="Adding collateral remains available even if the oracle is stale or borrowing is paused."
+            />
+          </div>
+          <div className="span-6">
+            <TransactionPanel
+              action="Borrow"
+              market={m.address}
+              risk="Borrowing requires a fresh oracle observation and must remain below every immutable health and cap limit."
+            />
+          </div>
+          <div className="span-6">
+            <TransactionPanel
+              action="Repay"
+              market={m.address}
+              risk="Repayment remains available even if the oracle fails or borrowing is paused."
+            />
+          </div>
+        </div>
+      </section>
       <div className="grid section">
         <section className="card panel span-7">
           <h2>Risk and liquidity</h2>
