@@ -1,4 +1,4 @@
-use solana_program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 use crate::constants::*;
 

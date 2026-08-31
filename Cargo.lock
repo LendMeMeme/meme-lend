@@ -925,7 +925,6 @@ name = "meme_lending_pinocchio"
 version = "0.1.0"
 dependencies = [
  "pinocchio",
- "solana-program-error 3.0.1",
  "solana-security-txt",
 ]
 

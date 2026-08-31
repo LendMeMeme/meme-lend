@@ -25,4 +25,9 @@ gates above pass.
 - Numeric instruction and state fields use checked, fixed-width little-endian codecs without Borsh.
 - State accounts use a three-byte version/kind/bump header, preventing cross-account type confusion.
 - Borrower positions occupy 91 bytes and lender positions occupy 107 bytes, with no Rust padding.
+- Markets occupy 257 bytes versus 519 bytes for the Anchor account, a 50.5% reduction. Canonical
+  vault/config/reward PDAs are derived instead of redundantly stored; approved rate curves and token
+  program choices are represented by validated identifiers and bit flags.
+- Oracle observations occupy 111 bytes and hot market totals mutate in place without full-account
+  decoding or serialization.
 - Lending arithmetic matches the reference program's conservative rounding test vectors.

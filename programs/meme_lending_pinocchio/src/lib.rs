@@ -5,6 +5,7 @@ pub mod constants;
 pub mod instruction;
 pub mod math;
 pub mod state;
+pub mod validation;
 
 #[cfg(feature = "bpf-entrypoint")]
 mod entrypoint {
@@ -27,6 +28,6 @@ mod entrypoint {
         // Dispatch is deliberately strict. Each handler is added only after its
         // account validation has differential tests against the Anchor program.
         let _instruction = LendingInstruction::decode(instruction_data)?;
-        Err(solana_program_error::ProgramError::InvalidInstructionData)
+        Err(pinocchio::error::ProgramError::InvalidInstructionData)
     }
 }

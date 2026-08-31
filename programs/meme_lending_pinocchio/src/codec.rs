@@ -1,4 +1,4 @@
-use solana_program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 #[derive(Clone, Copy)]
 pub struct Decoder<'a> {
@@ -80,6 +80,36 @@ impl<'a> Encoder<'a> {
         head.copy_from_slice(bytes);
         self.remaining = tail;
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn u8(&mut self, value: u8) -> Result<(), ProgramError> {
+        self.put(&[value])
+    }
+
+    #[inline(always)]
+    pub fn u16(&mut self, value: u16) -> Result<(), ProgramError> {
+        self.put(&value.to_le_bytes())
+    }
+
+    #[inline(always)]
+    pub fn u32(&mut self, value: u32) -> Result<(), ProgramError> {
+        self.put(&value.to_le_bytes())
+    }
+
+    #[inline(always)]
+    pub fn u64(&mut self, value: u64) -> Result<(), ProgramError> {
+        self.put(&value.to_le_bytes())
+    }
+
+    #[inline(always)]
+    pub fn u128(&mut self, value: u128) -> Result<(), ProgramError> {
+        self.put(&value.to_le_bytes())
+    }
+
+    #[inline(always)]
+    pub fn i64(&mut self, value: i64) -> Result<(), ProgramError> {
+        self.put(&value.to_le_bytes())
     }
 
     #[inline(always)]

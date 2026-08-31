@@ -1,4 +1,4 @@
-use solana_program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 /// Stable optimized-program instruction tags. These do not reuse Anchor's
 /// discriminators: the optimized deployment has its own program id and SDK.
