@@ -17,5 +17,8 @@ bpf-entrypoint = []
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
 
 [dependencies]
-pinocchio = { version = "0.11.0", default-features = false }
+pinocchio = { version = "0.11.0", default-features = false, features = ["cpi"] }
+pinocchio-system = "0.6.1"
+pinocchio-token = "0.7.0"
+pinocchio-token-2022 = "0.4.0"
 solana-security-txt = "1.1.3"

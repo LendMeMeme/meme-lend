@@ -7,6 +7,8 @@ pub const ADDRESS_BYTES: usize = 32;
 pub const MARKET_FLAG_BORROWING_PAUSED: u8 = 1;
 pub const TOKEN_FLAG_COLLATERAL_2022: u8 = 1;
 pub const TOKEN_FLAG_LOAN_2022: u8 = 2;
+pub const GLOBAL_FLAG_PAUSED: u8 = 1;
+pub const ORACLE_FLAG_CUSTOM_HIGH_RISK: u8 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -58,6 +60,180 @@ impl AccountHeader {
     fn encode(&self, encoder: &mut Encoder<'_>) -> Result<(), ProgramError> {
         encoder.put(&[self.version, self.kind as u8, self.bump])
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GlobalConfig {
+    pub header: AccountHeader,
+    pub authority: [u8; ADDRESS_BYTES],
+    pub pending_authority: [u8; ADDRESS_BYTES],
+    pub approved_loan_mint: [u8; ADDRESS_BYTES],
+    pub protocol_fee_recipient: [u8; ADDRESS_BYTES],
+    pub market_count: u64,
+    pub max_oracle_age_seconds: u32,
+    pub flags: u8,
+}
+
+impl GlobalConfig {
+    pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES * 4 + 8 + 4 + 1;
+
+    pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mut decoder = Decoder::new(data);
+        let value = Self {
+            header: AccountHeader::decode(&mut decoder, AccountKind::GlobalConfig)?,
+            authority: *decoder.take()?,
+            pending_authority: *decoder.take()?,
+            approved_loan_mint: *decoder.take()?,
+            protocol_fee_recipient: *decoder.take()?,
+            market_count: decoder.u64()?,
+            max_oracle_age_seconds: decoder.u32()?,
+            flags: decoder.u8()?,
+        };
+        decoder.finish()?;
+        if value.flags & !GLOBAL_FLAG_PAUSED != 0 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Ok(value)
+    }
+
+    pub fn encode(&self, data: &mut [u8]) -> Result<(), ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+        let mut encoder = Encoder::new(data);
+        self.header.encode(&mut encoder)?;
+        encoder.put(&self.authority)?;
+        encoder.put(&self.pending_authority)?;
+        encoder.put(&self.approved_loan_mint)?;
+        encoder.put(&self.protocol_fee_recipient)?;
+        encoder.u64(self.market_count)?;
+        encoder.u32(self.max_oracle_age_seconds)?;
+        encoder.u8(self.flags)?;
+        encoder.finish()
+    }
+
+    pub const fn paused(&self) -> bool {
+        self.flags & GLOBAL_FLAG_PAUSED != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum OracleKind {
+    Pyth = 0,
+    Switchboard = 1,
+    DexTwap = 2,
+    AggregatedPools = 3,
+    Custom = 4,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OracleConfiguration {
+    pub header: AccountHeader,
+    pub market: [u8; ADDRESS_BYTES],
+    pub kind: OracleKind,
+    pub max_age_seconds: u32,
+    pub max_confidence_bps: u16,
+    pub max_deviation_bps: u16,
+    pub price_decimals: u8,
+    pub source_count: u8,
+    pub sources: [[u8; ADDRESS_BYTES]; 5],
+    pub flags: u8,
+}
+
+impl OracleConfiguration {
+    pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES + 1 + 4 + 2 + 2 + 1 + 1 + 160 + 1;
+
+    pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mut decoder = Decoder::new(data);
+        let header = AccountHeader::decode(&mut decoder, AccountKind::OracleConfiguration)?;
+        let market = *decoder.take()?;
+        let kind = match decoder.u8()? {
+            0 => OracleKind::Pyth,
+            1 => OracleKind::Switchboard,
+            2 => OracleKind::DexTwap,
+            3 => OracleKind::AggregatedPools,
+            4 => OracleKind::Custom,
+            _ => return Err(ProgramError::InvalidAccountData),
+        };
+        let value = Self {
+            header,
+            market,
+            kind,
+            max_age_seconds: decoder.u32()?,
+            max_confidence_bps: decoder.u16()?,
+            max_deviation_bps: decoder.u16()?,
+            price_decimals: decoder.u8()?,
+            source_count: decoder.u8()?,
+            sources: [
+                *decoder.take()?,
+                *decoder.take()?,
+                *decoder.take()?,
+                *decoder.take()?,
+                *decoder.take()?,
+            ],
+            flags: decoder.u8()?,
+        };
+        decoder.finish()?;
+        if value.source_count == 0
+            || value.source_count > 5
+            || value.flags & !ORACLE_FLAG_CUSTOM_HIGH_RISK != 0
+        {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Ok(value)
+    }
+
+    pub fn encode(&self, data: &mut [u8]) -> Result<(), ProgramError> {
+        if data.len() != Self::LEN || self.source_count == 0 || self.source_count > 5 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mut encoder = Encoder::new(data);
+        self.header.encode(&mut encoder)?;
+        encoder.put(&self.market)?;
+        encoder.u8(self.kind as u8)?;
+        encoder.u32(self.max_age_seconds)?;
+        encoder.u16(self.max_confidence_bps)?;
+        encoder.u16(self.max_deviation_bps)?;
+        encoder.u8(self.price_decimals)?;
+        encoder.u8(self.source_count)?;
+        for source in &self.sources {
+            encoder.put(source)?;
+        }
+        encoder.u8(self.flags)?;
+        encoder.finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MarketRewards {
+    pub header: AccountHeader,
+    pub market: [u8; ADDRESS_BYTES],
+    pub reward_mint: [u8; ADDRESS_BYTES],
+    pub reward_index: u128,
+    pub undistributed_rewards: u64,
+}
+
+impl MarketRewards {
+    pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES * 2 + 16 + 8;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FirstLossReserve {
+    pub header: AccountHeader,
+    pub market: [u8; ADDRESS_BYTES],
+    pub deposited: u64,
+    pub absorbed_losses: u64,
+}
+
+impl FirstLossReserve {
+    pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES + 8 + 8;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -577,5 +753,52 @@ mod tests {
         assert_eq!(decoded.borrow_index, 40);
         assert_eq!(decoded.total_debt, 50);
         assert_eq!(decoded.last_accrual_timestamp, 60);
+    }
+
+    #[test]
+    fn global_config_round_trips_in_144_bytes() {
+        let config = GlobalConfig {
+            header: header(AccountKind::GlobalConfig),
+            authority: [1; 32],
+            pending_authority: [2; 32],
+            approved_loan_mint: [3; 32],
+            protocol_fee_recipient: [4; 32],
+            market_count: 5,
+            max_oracle_age_seconds: 60,
+            flags: GLOBAL_FLAG_PAUSED,
+        };
+        let mut bytes = [0_u8; GlobalConfig::LEN];
+        config.encode(&mut bytes).unwrap();
+        assert_eq!(GlobalConfig::decode(&bytes).unwrap(), config);
+        assert!(GlobalConfig::decode(&bytes).unwrap().paused());
+        assert_eq!(GlobalConfig::LEN, 144);
+    }
+
+    #[test]
+    fn oracle_configuration_is_fixed_and_bounded() {
+        let config = OracleConfiguration {
+            header: header(AccountKind::OracleConfiguration),
+            market: [1; 32],
+            kind: OracleKind::Custom,
+            max_age_seconds: 60,
+            max_confidence_bps: 100,
+            max_deviation_bps: 200,
+            price_decimals: 8,
+            source_count: 1,
+            sources: [[2; 32], [0; 32], [0; 32], [0; 32], [0; 32]],
+            flags: ORACLE_FLAG_CUSTOM_HIGH_RISK,
+        };
+        let mut bytes = [0_u8; OracleConfiguration::LEN];
+        config.encode(&mut bytes).unwrap();
+        assert_eq!(OracleConfiguration::decode(&bytes).unwrap(), config);
+        assert_eq!(OracleConfiguration::LEN, 207);
+        bytes[45] = 6;
+        assert!(OracleConfiguration::decode(&bytes).is_err());
+    }
+
+    #[test]
+    fn derived_vaults_keep_rewards_and_reserve_compact() {
+        assert_eq!(MarketRewards::LEN, 91);
+        assert_eq!(FirstLossReserve::LEN, 51);
     }
 }

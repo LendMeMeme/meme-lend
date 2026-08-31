@@ -2,6 +2,8 @@
 
 pub mod codec;
 pub mod constants;
+pub mod cpi;
+pub mod engine;
 pub mod instruction;
 pub mod math;
 pub mod state;

@@ -666,10 +666,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "five8"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23f76610e969fa1784327ded240f1e28a3fd9520c9cec93b636fcf62dd37f772"
+dependencies = [
+ "five8_core",
+]
+
+[[package]]
 name = "five8_const"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26dec3da8bc3ef08f2c04f61eab298c3ab334523e55f076354d6d6f613799a7b"
+dependencies = [
+ "five8_core",
+]
+
+[[package]]
+name = "five8_const"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a0f1728185f277989ca573a402716ae0beaaea3f76a8ff87ef9dd8fb19436c5"
 dependencies = [
  "five8_core",
 ]
@@ -925,6 +943,9 @@ name = "meme_lending_pinocchio"
 version = "0.1.0"
 dependencies = [
  "pinocchio",
+ "pinocchio-system",
+ "pinocchio-token",
+ "pinocchio-token-2022",
  "solana-security-txt",
 ]
 
@@ -1075,7 +1096,45 @@ dependencies = [
  "solana-account-view",
  "solana-address",
  "solana-define-syscall 5.2.0",
+ "solana-instruction-view",
  "solana-program-error 3.0.1",
+]
+
+[[package]]
+name = "pinocchio-system"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ae2ee67b42e2ac797dd88312da473c895660e270d8093e0ba2749b885b5778"
+dependencies = [
+ "pinocchio",
+ "solana-address",
+]
+
+[[package]]
+name = "pinocchio-token"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "217e3259f93a1520e4692b18653dad4d29af54ffc8b3a09819808be85dada074"
+dependencies = [
+ "solana-account-view",
+ "solana-address",
+ "solana-instruction-view",
+ "solana-program-error 3.0.1",
+]
+
+[[package]]
+name = "pinocchio-token-2022"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a3c164973916f044bebff3c8cb4467088bafb13cbdb818522b9ca8782940d06"
+dependencies = [
+ "pinocchio-token",
+ "solana-account-view",
+ "solana-address",
+ "solana-instruction-view",
+ "solana-nullable",
+ "solana-program-error 3.0.1",
+ "solana-zero-copy",
 ]
 
 [[package]]
@@ -1436,7 +1495,10 @@ version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01332a01c0a3098404d55a724c8d9a92aed4a50fe40a7dd0c7a51e29274c14de"
 dependencies = [
+ "five8 1.0.0",
+ "five8_const 1.0.0",
  "solana-define-syscall 5.2.0",
+ "solana-nullable",
  "solana-program-error 3.0.1",
 ]
 
@@ -1670,7 +1732,7 @@ dependencies = [
  "borsh 1.8.1",
  "bytemuck",
  "bytemuck_derive",
- "five8",
+ "five8 0.2.1",
  "js-sys",
  "serde",
  "serde_derive",
@@ -1696,6 +1758,18 @@ dependencies = [
  "solana-define-syscall 2.3.0",
  "solana-pubkey",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "solana-instruction-view"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ab7a27d0c4214b9f7389c3dd00b68c93093a67f1dcc5b7893aebe299bbcbb47"
+dependencies = [
+ "solana-account-view",
+ "solana-address",
+ "solana-define-syscall 5.2.0",
+ "solana-program-error 3.0.1",
 ]
 
 [[package]]
@@ -1835,6 +1909,12 @@ dependencies = [
  "solana-pubkey",
  "solana-sha256-hasher",
 ]
+
+[[package]]
+name = "solana-nullable"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "889194d8c5faec648f2f6fadddb60566249921ebb074e2707e7095458d5864e2"
 
 [[package]]
 name = "solana-program"
@@ -1985,8 +2065,8 @@ dependencies = [
  "bytemuck",
  "bytemuck_derive",
  "curve25519-dalek",
- "five8",
- "five8_const",
+ "five8 0.2.1",
+ "five8_const 0.1.4",
  "getrandom 0.2.17",
  "js-sys",
  "num-traits",
@@ -2123,7 +2203,7 @@ version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64c8ec8e657aecfc187522fc67495142c12f35e55ddeca8698edbb738b8dbd8c"
 dependencies = [
- "five8",
+ "five8 0.2.1",
  "solana-sanitize",
 ]
 
@@ -2291,6 +2371,12 @@ dependencies = [
  "solana-short-vec",
  "solana-system-interface",
 ]
+
+[[package]]
+name = "solana-zero-copy"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd3183a7934dd7e6490ae86732616cd70361f5ab9401b9a375ab62f7fa17b112"
 
 [[package]]
 name = "solana-zk-sdk"
