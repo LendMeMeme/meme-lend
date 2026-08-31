@@ -122,6 +122,7 @@ export async function buildCreateMarketTransaction(input: {
       "SHA-256",
       concatenate(
         new TextEncoder().encode("meme-lend-market-v1"),
+        input.owner.toBytes(),
         collateralMint.toBytes(),
         loanMint.toBytes(),
         collateralTokenProgram.toBytes(),

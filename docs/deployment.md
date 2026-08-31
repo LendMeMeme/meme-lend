@@ -20,10 +20,10 @@ root directory. Verify that every deployment plan includes Node and pnpm before 
 ## Current readiness boundary
 
 Native Rust, TypeScript, indexer/SDK tests, and the Next.js production build are verified locally.
-The most recent SBF artifact and generated IDL predate the final reward-claim, Token-2022 extension,
-and approved-preset changes because the host's WSL distribution disappeared during the final build.
-Do not deploy `target/deploy/meme_lending.so` or consume the checked-in generated IDL until an Anchor
-0.31.1 SBF build and local-validator tests are rerun and the generated files are copied into the SDK.
+GitHub Actions produces the SBF artifact with Anchor 0.31.1's reproducible container, extracts its
+embedded security metadata, records its SHA-256 digest, and publishes the generated IDL with the
+artifact. A new successful reproducible build is required for every program change. Local-validator
+transaction tests must still pass against that exact release before deployment.
 
 Native Pyth, Switchboard, and DEX adapter parsers are also a launch blocker; see `oracle-policy.md`.
 
@@ -38,7 +38,10 @@ Native Pyth, Switchboard, and DEX adapter parsers are also a launch blocker; see
 - RPC HTTP/WebSocket failover and MongoDB backups are configured.
 - Indexer backfill is tested from an empty database and from a stale checkpoint.
 - Liquidator has a funded, rate-limited key with no protocol privilege.
-- Multisig upgrade authority and timelock are active; no developer wallet controls upgrades alone.
+- The upgrade authority matches the explicitly approved release authority. A single-key authority is
+  supported but is a documented critical operational risk: compromise permits arbitrary upgrades.
+  Store it offline, never place it in CI or Railway, and transfer authority before public launch if
+  governance requirements change.
 - Incident contacts, pause procedure, and public status channel are documented.
 
 The reproducible build and post-deployment verification procedure is documented in
@@ -47,8 +50,10 @@ that an on-chain binary is independently verifiable.
 
 ## Environments
 
-Localnet uses disposable keys and mints. Devnet uses a dedicated multisig and verified public RPC
-endpoints. Mainnet configuration is never copied from devnet without re-verifying every address.
+Localnet uses disposable keys and mints. Mainnet configuration must never be copied from another
+cluster without re-verifying every address. Protocol initialization requires the current program
+upgrade authority to sign, preventing a third party from capturing the global configuration after
+deployment.
 
 ## Rollout
 

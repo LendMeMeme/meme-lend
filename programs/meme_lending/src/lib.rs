@@ -138,10 +138,19 @@ pub mod meme_lending {
         Ok(())
     }
 
+    pub fn set_protocol_pause(ctx: Context<SetProtocolPause>, paused: bool) -> Result<()> {
+        ctx.accounts.global_config.paused = paused;
+        emit!(ProtocolPauseChanged {
+            authority: ctx.accounts.authority.key(),
+            paused,
+        });
+        Ok(())
+    }
+
     pub fn pause_market(ctx: Context<PauseMarket>, paused: bool) -> Result<()> {
-        require_keys_eq!(
-            ctx.accounts.market.creator,
-            ctx.accounts.creator.key(),
+        require!(
+            ctx.accounts.market.creator == ctx.accounts.authority.key()
+                || ctx.accounts.global_config.authority == ctx.accounts.authority.key(),
             LendingError::Unauthorized
         );
         ctx.accounts.market.borrowing_paused = paused;
@@ -411,6 +420,7 @@ pub mod meme_lending {
             ctx.accounts.collateral_mint.decimals,
             debt,
             ctx.accounts.oracle_observation.price,
+            ctx.accounts.oracle_configuration.price_decimals,
             ctx.accounts.market.lltv_bps,
         )?;
         ctx.accounts.borrower_position.collateral_amount = remaining;
@@ -471,6 +481,7 @@ pub mod meme_lending {
             ctx.accounts.collateral_mint.decimals,
             resulting_debt,
             ctx.accounts.oracle_observation.price,
+            ctx.accounts.oracle_configuration.price_decimals,
             ctx.accounts.market.lltv_bps,
         )?;
         let shares = math::debt_to_shares_ceil(amount, ctx.accounts.market.borrow_index)?;
@@ -707,6 +718,7 @@ pub mod meme_lending {
             ctx.accounts.borrower_position.collateral_amount,
             ctx.accounts.collateral_mint.decimals,
             ctx.accounts.oracle_observation.price,
+            ctx.accounts.oracle_configuration.price_decimals,
         )?;
         require!(
             debt > math::max_debt_for_collateral(value, ctx.accounts.market.lltv_bps)?,
@@ -718,6 +730,7 @@ pub mod meme_lending {
             ctx.accounts.borrower_position.collateral_amount,
             ctx.accounts.collateral_mint.decimals,
             ctx.accounts.oracle_observation.price,
+            ctx.accounts.oracle_configuration.price_decimals,
             ctx.accounts.market.close_factor_bps,
             ctx.accounts.market.liquidation_bonus_bps,
         )?;
@@ -734,15 +747,11 @@ pub mod meme_lending {
             repaid,
             ctx.accounts.loan_mint.decimals,
         )?;
-        let shares = if repaid == debt {
-            ctx.accounts.borrower_position.borrow_shares
-        } else {
-            math::mul_div_ceil(
-                u128::from(repaid),
-                ctx.accounts.borrower_position.borrow_shares,
-                u128::from(debt),
-            )?
-        };
+        let shares = math::liquidation_shares_to_burn(
+            repaid,
+            debt,
+            ctx.accounts.borrower_position.borrow_shares,
+        )?;
         ctx.accounts.borrower_position.borrow_shares = ctx
             .accounts
             .borrower_position
@@ -848,6 +857,11 @@ pub mod meme_lending {
             LendingError::UnsupportedToken
         );
         if ctx.accounts.market.active_rewards == Pubkey::default() {
+            require_keys_eq!(
+                ctx.accounts.market.creator,
+                ctx.accounts.funder.key(),
+                LendingError::Unauthorized
+            );
             ctx.accounts.market.active_rewards = rewards.key();
         } else {
             require_keys_eq!(
@@ -1001,12 +1015,13 @@ fn require_healthy(
     decimals: u8,
     debt: u64,
     price: u128,
+    price_decimals: u8,
     lltv_bps: u16,
 ) -> Result<()> {
     if debt == 0 {
         return Ok(());
     }
-    let value = math::collateral_value(collateral, decimals, price)?;
+    let value = math::collateral_value(collateral, decimals, price, price_decimals)?;
     require!(
         debt <= math::max_debt_for_collateral(value, lltv_bps)?,
         LendingError::UnhealthyPosition
@@ -1245,6 +1260,7 @@ fn validate_market_args(ctx: &Context<CreateMarket>, args: &CreateMarketArgs) ->
     let loan_token_program = ctx.accounts.loan_token_program.key();
     let expected_hash = hashv(&[
         b"meme-lend-market-v1",
+        ctx.accounts.creator.key().as_ref(),
         collateral_mint.as_ref(),
         loan_mint.as_ref(),
         collateral_token_program.as_ref(),
@@ -1327,12 +1343,25 @@ mod validation_tests {
 pub struct InitializeProtocol<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    pub program: Program<'info, crate::program::MemeLending>,
+    #[account(
+        constraint = program.programdata_address()? == Some(program_data.key()) @ LendingError::Unauthorized,
+        constraint = program_data.upgrade_authority_address == Some(authority.key()) @ LendingError::Unauthorized
+    )]
+    pub program_data: Account<'info, ProgramData>,
     pub loan_mint: InterfaceAccount<'info, Mint>,
     /// CHECK: Stored as a destination authority and need not sign initialization.
     pub protocol_fee_recipient: UncheckedAccount<'info>,
     #[account(init, payer = authority, space = 8 + GlobalConfig::INIT_SPACE, seeds = [b"global-config"], bump)]
     pub global_config: Account<'info, GlobalConfig>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetProtocolPause<'info> {
+    pub authority: Signer<'info>,
+    #[account(mut, seeds = [b"global-config"], bump = global_config.bump, has_one = authority)]
+    pub global_config: Account<'info, GlobalConfig>,
 }
 
 #[derive(Accounts)]
@@ -1368,8 +1397,10 @@ pub struct CreateMarket<'info> {
 
 #[derive(Accounts)]
 pub struct PauseMarket<'info> {
-    pub creator: Signer<'info>,
-    #[account(mut, has_one = creator)]
+    pub authority: Signer<'info>,
+    #[account(seeds = [b"global-config"], bump = global_config.bump)]
+    pub global_config: Account<'info, GlobalConfig>,
+    #[account(mut, has_one = global_config)]
     pub market: Account<'info, Market>,
 }
 

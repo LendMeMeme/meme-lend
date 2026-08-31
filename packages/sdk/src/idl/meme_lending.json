@@ -152,6 +152,93 @@
       ]
     },
     {
+      "name": "claim_lender_rewards",
+      "discriminator": [28, 22, 29, 40, 230, 221, 198, 86],
+      "accounts": [
+        {
+          "name": "lender",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "relations": ["lender_position", "market_rewards"]
+        },
+        {
+          "name": "lender_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [108, 101, 110, 100, 101, 114]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "lender"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market_rewards",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [114, 101, 119, 97, 114, 100, 115]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "reward_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_mint",
+          "relations": ["market_rewards"]
+        },
+        {
+          "name": "lender_rewards",
+          "writable": true
+        },
+        {
+          "name": "reward_vault",
+          "writable": true,
+          "relations": ["market_rewards"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_market_creator_fees",
       "discriminator": [12, 227, 152, 98, 143, 136, 181, 200],
       "accounts": [
@@ -169,6 +256,67 @@
         },
         {
           "name": "creator_usdc",
+          "writable": true
+        },
+        {
+          "name": "liquidity_vault",
+          "writable": true,
+          "relations": ["market"]
+        },
+        {
+          "name": "market_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109, 97, 114, 107, 101, 116, 45, 97, 117, 116, 104, 111, 114, 105, 116, 121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_protocol_fees",
+      "discriminator": [34, 142, 219, 112, 109, 54, 133, 23],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": ["global_config"]
+        },
+        {
+          "name": "global_config",
+          "relations": ["market"]
+        },
+        {
+          "name": "protocol_fee_recipient",
+          "relations": ["global_config"]
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "recipient_usdc",
           "writable": true
         },
         {
@@ -545,7 +693,8 @@
           "signer": true
         },
         {
-          "name": "market"
+          "name": "market",
+          "writable": true
         },
         {
           "name": "reward_mint"
@@ -634,6 +783,13 @@
           "name": "authority",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "program",
+          "address": "9VHZhNZkrsocLmafGBmbG2mCiAnwA1WaBTG1aNb2kr4j"
+        },
+        {
+          "name": "program_data"
         },
         {
           "name": "loan_mint"
@@ -781,8 +937,19 @@
       "discriminator": [216, 238, 4, 164, 65, 11, 162, 91],
       "accounts": [
         {
-          "name": "creator",
-          "signer": true,
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "global_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103]
+              }
+            ]
+          },
           "relations": ["market"]
         },
         {
@@ -851,6 +1018,35 @@
         {
           "name": "requested_amount",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_protocol_pause",
+      "discriminator": [19, 235, 135, 250, 184, 114, 209, 89],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": ["global_config"]
+        },
+        {
+          "name": "global_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
         }
       ]
     },
@@ -950,6 +1146,10 @@
               }
             ]
           }
+        },
+        {
+          "name": "market_rewards",
+          "optional": true
         },
         {
           "name": "loan_mint"
@@ -1120,6 +1320,10 @@
           }
         },
         {
+          "name": "market_rewards",
+          "optional": true
+        },
+        {
           "name": "loan_mint"
         },
         {
@@ -1216,6 +1420,10 @@
       "discriminator": [79, 218, 196, 73, 32, 148, 138, 71]
     },
     {
+      "name": "LenderRewardsClaimed",
+      "discriminator": [226, 9, 81, 236, 166, 31, 133, 173]
+    },
+    {
       "name": "LenderRewardsFunded",
       "discriminator": [30, 48, 72, 233, 123, 184, 156, 43]
     },
@@ -1244,8 +1452,16 @@
       "discriminator": [40, 107, 90, 214, 96, 30, 61, 128]
     },
     {
+      "name": "ProtocolFeesClaimed",
+      "discriminator": [22, 228, 205, 252, 57, 17, 156, 252]
+    },
+    {
       "name": "ProtocolInitialized",
       "discriminator": [173, 122, 168, 254, 9, 118, 76, 132]
+    },
+    {
+      "name": "ProtocolPauseChanged",
+      "discriminator": [67, 33, 235, 73, 71, 124, 172, 110]
     },
     {
       "name": "UsdcBorrowed",
@@ -1336,6 +1552,11 @@
       "code": 6015,
       "name": "UnsupportedTokenExtension",
       "msg": "The mint uses a Token-2022 extension unsupported by this market"
+    },
+    {
+      "code": 6016,
+      "name": "RewardsAccountRequired",
+      "msg": "The active market rewards account is required for this share mutation"
     }
   ],
   "types": [
@@ -1676,6 +1897,30 @@
       }
     },
     {
+      "name": "LenderRewardsClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "lender",
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "LenderRewardsFunded",
       "type": {
         "kind": "struct",
@@ -1786,6 +2031,10 @@
           },
           {
             "name": "oracle_configuration",
+            "type": "pubkey"
+          },
+          {
+            "name": "active_rewards",
             "type": "pubkey"
           },
           {
@@ -2157,6 +2406,26 @@
       }
     },
     {
+      "name": "ProtocolFeesClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "ProtocolInitialized",
       "type": {
         "kind": "struct",
@@ -2168,6 +2437,22 @@
           {
             "name": "loan_mint",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolPauseChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
           }
         ]
       }

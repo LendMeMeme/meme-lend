@@ -43,6 +43,8 @@ change received balances or introduce external control.
 
 ## Upgrades
 
-Development and early audited deployments remain upgradeable. The authority must be a multisig,
-with a timelock for non-emergency releases and reproducible build hashes. Upgrades may add features
+Development and early audited deployments remain upgradeable. The explicitly approved release
+authority may be a secured single offline key, although that creates a critical key-compromise risk;
+a multisig and timelock remain the safer governance target. Every release uses reproducible build
+hashes. Upgrades may add features
 but must not reinterpret an existing market's immutable configuration.

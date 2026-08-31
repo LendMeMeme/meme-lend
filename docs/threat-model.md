@@ -25,7 +25,8 @@
 - Checked fixed-point math with conservative rounding and bounded parameters.
 - Strict Token-2022 extension allowlist.
 - Multiple RPC endpoints, finalized backfill, idempotent indexing, and direct-chain confirmation.
-- Multisig/timelocked upgrades, independent audits, and public deployment manifests.
+- Secured offline upgrade authority (preferably multisig/timelocked), independent audits, and public
+  deployment manifests. A single authority is explicitly treated as a critical operational risk.
 
 ## Residual risk
 

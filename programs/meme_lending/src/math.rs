@@ -129,19 +129,27 @@ pub fn settle_rewards(
     ))
 }
 
-pub fn collateral_value(collateral: u64, collateral_decimals: u8, price: u128) -> Result<u64> {
+pub fn collateral_value(
+    collateral: u64,
+    collateral_decimals: u8,
+    price: u128,
+    price_decimals: u8,
+) -> Result<u64> {
     require!(
-        collateral_decimals <= MAX_TOKEN_DECIMALS,
+        collateral_decimals <= MAX_TOKEN_DECIMALS && price_decimals <= MAX_TOKEN_DECIMALS,
         LendingError::InvalidParameter
     );
-    let scale = 10_u128
+    let token_scale = 10_u128
         .checked_pow(u32::from(collateral_decimals))
+        .ok_or(LendingError::MathOverflow)?;
+    let price_scale = 10_u128
+        .checked_pow(u32::from(price_decimals))
         .ok_or(LendingError::MathOverflow)?;
     let value = mul_div_floor(
         u128::from(collateral),
         price,
-        scale
-            .checked_mul(RATE_SCALE)
+        token_scale
+            .checked_mul(price_scale)
             .ok_or(LendingError::MathOverflow)?,
     )?;
     u64::try_from(value).map_err(|_| LendingError::MathOverflow.into())
@@ -162,6 +170,7 @@ pub fn liquidation_amounts(
     collateral: u64,
     collateral_decimals: u8,
     price: u128,
+    price_decimals: u8,
     close_factor_bps: u16,
     bonus_bps: u16,
 ) -> Result<(u64, u64)> {
@@ -174,7 +183,8 @@ pub fn liquidation_amounts(
         u128::from(close_factor_bps),
         u128::from(BPS_DENOMINATOR),
     )?;
-    let collateral_value = collateral_value(collateral, collateral_decimals, price)?;
+    let collateral_value =
+        collateral_value(collateral, collateral_decimals, price, price_decimals)?;
     let repay_supported = mul_div_floor(
         u128::from(collateral_value),
         u128::from(BPS_DENOMINATOR),
@@ -193,10 +203,13 @@ pub fn liquidation_amounts(
     let token_scale = 10_u128
         .checked_pow(u32::from(collateral_decimals))
         .ok_or(LendingError::MathOverflow)?;
+    let price_scale = 10_u128
+        .checked_pow(u32::from(price_decimals))
+        .ok_or(LendingError::MathOverflow)?;
     let seize = mul_div_ceil(
         seize_value,
         token_scale
-            .checked_mul(RATE_SCALE)
+            .checked_mul(price_scale)
             .ok_or(LendingError::MathOverflow)?,
         price,
     )?
@@ -205,6 +218,19 @@ pub fn liquidation_amounts(
         u64::try_from(repay).map_err(|_| LendingError::MathOverflow)?,
         u64::try_from(seize).map_err(|_| LendingError::MathOverflow)?,
     ))
+}
+
+pub fn liquidation_shares_to_burn(repaid: u64, debt: u64, borrow_shares: u128) -> Result<u128> {
+    require!(
+        repaid > 0 && debt > 0 && borrow_shares > 0,
+        LendingError::AmountTooSmall
+    );
+    if repaid == debt {
+        return Ok(borrow_shares);
+    }
+    let shares = mul_div_floor(u128::from(repaid), borrow_shares, u128::from(debt))?;
+    require!(shares > 0, LendingError::AmountTooSmall);
+    Ok(shares)
 }
 
 #[cfg(test)]
@@ -280,9 +306,29 @@ mod tests {
     fn liquidation_respects_close_factor_and_collateral() {
         let price = 2_000_000_u128 * RATE_SCALE;
         let (repaid, seized) =
-            liquidation_amounts(1_000_000, 1_000_000, 1_000_000, 6, price, 5_000, 1_000).unwrap();
+            liquidation_amounts(1_000_000, 1_000_000, 1_000_000, 6, price, 18, 5_000, 1_000)
+                .unwrap();
         assert_eq!(repaid, 500_000);
         assert_eq!(seized, 275_000);
+    }
+
+    #[test]
+    fn oracle_price_decimals_are_applied() {
+        assert_eq!(
+            collateral_value(1_000_000, 6, 2_000_000_000_000, 6).unwrap(),
+            2_000_000
+        );
+        assert_eq!(
+            collateral_value(1_000_000, 6, 2_000_000_000_000_000, 9).unwrap(),
+            2_000_000
+        );
+    }
+
+    #[test]
+    fn partial_liquidation_never_burns_all_shares_for_partial_debt() {
+        assert!(liquidation_shares_to_burn(1, 2, 1).is_err());
+        assert_eq!(liquidation_shares_to_burn(1, 2, 2).unwrap(), 1);
+        assert_eq!(liquidation_shares_to_burn(2, 2, 1).unwrap(), 1);
     }
 
     #[test]

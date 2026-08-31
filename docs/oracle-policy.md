@@ -3,6 +3,11 @@
 Oracle adapters return a normalized collateral/USDC price, confidence information when available,
 observation time, pair identity, decimals, and a conservative recoverable-USDC limit.
 
+The integer price is expressed in loan-mint atomic units per whole collateral token, scaled by
+`10^price_decimals`. Every health and liquidation calculation applies both the collateral mint
+decimals and the immutable oracle price decimals. Publishers must not submit human-readable decimal
+values directly.
+
 Risk-increasing actions validate:
 
 - the configured adapter and source-account owners;

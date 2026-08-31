@@ -188,6 +188,108 @@ export type MemeLending = {
       ];
     },
     {
+      name: "claimLenderRewards";
+      discriminator: [28, 22, 29, 40, 230, 221, 198, 86];
+      accounts: [
+        {
+          name: "lender";
+          signer: true;
+        },
+        {
+          name: "market";
+          relations: ["lenderPosition", "marketRewards"];
+        },
+        {
+          name: "lenderPosition";
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [108, 101, 110, 100, 101, 114];
+              },
+              {
+                kind: "account";
+                path: "market";
+              },
+              {
+                kind: "account";
+                path: "lender";
+              },
+            ];
+          };
+        },
+        {
+          name: "marketRewards";
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [114, 101, 119, 97, 114, 100, 115];
+              },
+              {
+                kind: "account";
+                path: "market";
+              },
+              {
+                kind: "account";
+                path: "rewardMint";
+              },
+            ];
+          };
+        },
+        {
+          name: "rewardMint";
+          relations: ["marketRewards"];
+        },
+        {
+          name: "lenderRewards";
+          writable: true;
+        },
+        {
+          name: "rewardVault";
+          writable: true;
+          relations: ["marketRewards"];
+        },
+        {
+          name: "marketAuthority";
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  45,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121,
+                ];
+              },
+              {
+                kind: "account";
+                path: "market";
+              },
+            ];
+          };
+        },
+        {
+          name: "rewardTokenProgram";
+        },
+      ];
+      args: [];
+    },
+    {
       name: "claimMarketCreatorFees";
       discriminator: [12, 227, 152, 98, 143, 136, 181, 200];
       accounts: [
@@ -205,6 +307,82 @@ export type MemeLending = {
         },
         {
           name: "creatorUsdc";
+          writable: true;
+        },
+        {
+          name: "liquidityVault";
+          writable: true;
+          relations: ["market"];
+        },
+        {
+          name: "marketAuthority";
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  45,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121,
+                ];
+              },
+              {
+                kind: "account";
+                path: "market";
+              },
+            ];
+          };
+        },
+        {
+          name: "loanTokenProgram";
+        },
+      ];
+      args: [
+        {
+          name: "amount";
+          type: "u64";
+        },
+      ];
+    },
+    {
+      name: "claimProtocolFees";
+      discriminator: [34, 142, 219, 112, 109, 54, 133, 23];
+      accounts: [
+        {
+          name: "authority";
+          signer: true;
+          relations: ["globalConfig"];
+        },
+        {
+          name: "globalConfig";
+          relations: ["market"];
+        },
+        {
+          name: "protocolFeeRecipient";
+          relations: ["globalConfig"];
+        },
+        {
+          name: "market";
+          writable: true;
+        },
+        {
+          name: "loanMint";
+        },
+        {
+          name: "recipientUsdc";
           writable: true;
         },
         {
@@ -702,6 +880,7 @@ export type MemeLending = {
         },
         {
           name: "market";
+          writable: true;
         },
         {
           name: "rewardMint";
@@ -805,6 +984,13 @@ export type MemeLending = {
           name: "authority";
           writable: true;
           signer: true;
+        },
+        {
+          name: "program";
+          address: "9VHZhNZkrsocLmafGBmbG2mCiAnwA1WaBTG1aNb2kr4j";
+        },
+        {
+          name: "programData";
         },
         {
           name: "loanMint";
@@ -967,8 +1153,19 @@ export type MemeLending = {
       discriminator: [216, 238, 4, 164, 65, 11, 162, 91];
       accounts: [
         {
-          name: "creator";
+          name: "authority";
           signer: true;
+        },
+        {
+          name: "globalConfig";
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103];
+              },
+            ];
+          };
           relations: ["market"];
         },
         {
@@ -1052,6 +1249,35 @@ export type MemeLending = {
         {
           name: "requestedAmount";
           type: "u64";
+        },
+      ];
+    },
+    {
+      name: "setProtocolPause";
+      discriminator: [19, 235, 135, 250, 184, 114, 209, 89];
+      accounts: [
+        {
+          name: "authority";
+          signer: true;
+          relations: ["globalConfig"];
+        },
+        {
+          name: "globalConfig";
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [103, 108, 111, 98, 97, 108, 45, 99, 111, 110, 102, 105, 103];
+              },
+            ];
+          };
+        },
+      ];
+      args: [
+        {
+          name: "paused";
+          type: "bool";
         },
       ];
     },
@@ -1151,6 +1377,10 @@ export type MemeLending = {
               },
             ];
           };
+        },
+        {
+          name: "marketRewards";
+          optional: true;
         },
         {
           name: "loanMint";
@@ -1351,6 +1581,10 @@ export type MemeLending = {
           };
         },
         {
+          name: "marketRewards";
+          optional: true;
+        },
+        {
           name: "loanMint";
         },
         {
@@ -1462,6 +1696,10 @@ export type MemeLending = {
       discriminator: [79, 218, 196, 73, 32, 148, 138, 71];
     },
     {
+      name: "lenderRewardsClaimed";
+      discriminator: [226, 9, 81, 236, 166, 31, 133, 173];
+    },
+    {
       name: "lenderRewardsFunded";
       discriminator: [30, 48, 72, 233, 123, 184, 156, 43];
     },
@@ -1490,8 +1728,16 @@ export type MemeLending = {
       discriminator: [40, 107, 90, 214, 96, 30, 61, 128];
     },
     {
+      name: "protocolFeesClaimed";
+      discriminator: [22, 228, 205, 252, 57, 17, 156, 252];
+    },
+    {
       name: "protocolInitialized";
       discriminator: [173, 122, 168, 254, 9, 118, 76, 132];
+    },
+    {
+      name: "protocolPauseChanged";
+      discriminator: [67, 33, 235, 73, 71, 124, 172, 110];
     },
     {
       name: "usdcBorrowed";
@@ -1582,6 +1828,11 @@ export type MemeLending = {
       code: 6015;
       name: "unsupportedTokenExtension";
       msg: "The mint uses a Token-2022 extension unsupported by this market";
+    },
+    {
+      code: 6016;
+      name: "rewardsAccountRequired";
+      msg: "The active market rewards account is required for this share mutation";
     },
   ];
   types: [
@@ -1922,6 +2173,30 @@ export type MemeLending = {
       };
     },
     {
+      name: "lenderRewardsClaimed";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "market";
+            type: "pubkey";
+          },
+          {
+            name: "lender";
+            type: "pubkey";
+          },
+          {
+            name: "rewardMint";
+            type: "pubkey";
+          },
+          {
+            name: "amount";
+            type: "u64";
+          },
+        ];
+      };
+    },
+    {
       name: "lenderRewardsFunded";
       type: {
         kind: "struct";
@@ -2032,6 +2307,10 @@ export type MemeLending = {
           },
           {
             name: "oracleConfiguration";
+            type: "pubkey";
+          },
+          {
+            name: "activeRewards";
             type: "pubkey";
           },
           {
@@ -2403,6 +2682,26 @@ export type MemeLending = {
       };
     },
     {
+      name: "protocolFeesClaimed";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "market";
+            type: "pubkey";
+          },
+          {
+            name: "recipient";
+            type: "pubkey";
+          },
+          {
+            name: "amount";
+            type: "u64";
+          },
+        ];
+      };
+    },
+    {
       name: "protocolInitialized";
       type: {
         kind: "struct";
@@ -2414,6 +2713,22 @@ export type MemeLending = {
           {
             name: "loanMint";
             type: "pubkey";
+          },
+        ];
+      };
+    },
+    {
+      name: "protocolPauseChanged";
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "authority";
+            type: "pubkey";
+          },
+          {
+            name: "paused";
+            type: "bool";
           },
         ];
       };

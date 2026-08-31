@@ -7,6 +7,12 @@ pub struct ProtocolInitialized {
 }
 
 #[event]
+pub struct ProtocolPauseChanged {
+    pub authority: Pubkey,
+    pub paused: bool,
+}
+
+#[event]
 pub struct MarketCreated {
     pub market: Pubkey,
     pub creator: Pubkey,
