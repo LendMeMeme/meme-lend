@@ -41,7 +41,7 @@ jobs:
       - name: Record binary digest
         run: sha256sum target/verifiable/meme_lending.so | tee target/verifiable/meme_lending.so.sha256
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: meme-lending-verifiable-${{ github.sha }}
           path: |
