@@ -8,7 +8,6 @@ export function CreateMarketForm() {
   const wallet = useWallet();
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
-  const [oraclePublisher, setOraclePublisher] = useState("");
   const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(5000);
   const [rateModel, setRateModel] = useState<keyof typeof RATE_MODELS>("conservative");
   const [marketCap, setMarketCap] = useState("");
@@ -33,7 +32,6 @@ export function CreateMarketForm() {
     try {
       const result = await buildCreateMarketTransaction({
         collateralMint,
-        oraclePublisher,
         lltvBps,
         rateModel,
         marketBorrowCap: marketCap,
@@ -109,21 +107,14 @@ export function CreateMarketForm() {
           Token-2022 mints with unsupported extensions are rejected by the program.
         </span>
       </div>
-      <div className="field">
-        <label htmlFor="oracle-publisher">Oracle publisher wallet</label>
-        <input
-          id="oracle-publisher"
-          value={oraclePublisher}
-          onChange={(e) => {
-            setOraclePublisher(e.target.value);
-            resetReview();
-          }}
-          placeholder="Wallet authorized to publish prices"
-        />
+      <div className="field oracle-managed">
+        <span className="field-label">Oracle service</span>
+        <strong>Lend Meme Loans managed oracle</strong>
         <span className="help">
-          You provide this public key. Its signer must submit fresh collateral/USDC price and
-          recoverable-liquidity observations after creation. If updates stop, borrowing and
-          collateral withdrawals stop; repayment and collateral deposits remain available.
+          Primary and backup publishers aggregate independent price sources and conservative DEX
+          liquidity. If safe quorum is unavailable, publishing stops and the market fails closed:
+          borrowing and collateral withdrawals stop while repayment and collateral deposits remain
+          available.
         </span>
       </div>
       <div className="field">

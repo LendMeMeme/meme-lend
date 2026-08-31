@@ -7,6 +7,9 @@ configuration, reserve, and bad-debt ledger.
 The protocol is permissionless infrastructure, not an endorsement of any market. A market's
 status and first-loss reserve do not guarantee repayment.
 
+Oracle publishing operations and failover are documented in
+[`docs/oracle-operations.md`](docs/oracle-operations.md).
+
 ## Workspace
 
 - `programs/meme_lending_pinocchio`: active optimized deployment candidate
@@ -16,6 +19,7 @@ status and first-loss reserve do not guarantee repayment.
 - `packages/shared`: cross-service types and validation
 - `apps/indexer`: finalized event ingestion, backfill, and query API
 - `apps/liquidator`: permissionless liquidation keeper
+- `apps/oracle-publisher`: fail-closed multi-source oracle publishing and standby failover
 - `apps/web`: Next.js 15 application
 - `tests/anchor`: local-validator end-to-end coverage
 - `docs`: economic specification, architecture, threat model, and operations

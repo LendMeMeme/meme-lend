@@ -33,6 +33,9 @@ Devnet or production launch is blocked until every enabled non-custom adapter ha
 account parsing and an allowlisted publisher deployment. Custom-publisher markets remain permissionless
 and prominently high risk.
 
+The production custom-publisher operating procedure, quorum rules, failover configuration, and
+monitoring endpoints are documented in `oracle-operations.md`.
+
 The August 2026 compatibility audit tested `pyth-solana-receiver-sdk` 2.0.0, 1.0.1, and 0.6.1.
 Version 2.0.0 targets Anchor 1.1; 1.0.1 resolves an incompatible Borsh graph; and 0.6.1 conflicts with
 the current SPL Token-2022 dependency graph. The failed pins were removed and the clean Anchor 0.31.1

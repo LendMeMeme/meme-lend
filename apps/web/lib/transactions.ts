@@ -26,6 +26,10 @@ import {
 export type MarketAction =
   "Supply" | "Withdraw" | "Deposit collateral" | "Borrow" | "Repay" | "Liquidate";
 export const RATE_MODELS = { standard: { id: 0 }, conservative: { id: 1 } } as const;
+export const PROTOCOL_ORACLE_PUBLISHERS = [
+  new PublicKey("6DJEenuAhzDojLcGgDhs8MjtxbP9xnUpAdUG5qVmZBa1"),
+  new PublicKey("GsoCUeJyngZMnt4Mm9Uptgavp9Poq1EskoKUou8ackGV"),
+] as const;
 const id = () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID ?? PINOCCHIO_PROGRAM_ID);
 const m = (pubkey: PublicKey, isWritable = false, isSigner = false): AccountMeta => ({
   pubkey,
@@ -53,7 +57,6 @@ async function data(connection: Connection, key: PublicKey): Promise<Uint8Array>
 
 export async function buildCreateMarketTransaction(input: {
   collateralMint: string;
-  oraclePublisher: string;
   lltvBps: 3000 | 4000 | 5000 | 6000 | 6500;
   rateModel: keyof typeof RATE_MODELS;
   marketBorrowCap: string;
@@ -91,7 +94,7 @@ export async function buildCreateMarketTransaction(input: {
     oracleMaxConfidenceBps: 500,
     oracleMaxDeviationBps: 1000,
     oraclePriceDecimals: 18,
-    oracleSources: [new PublicKey(input.oraclePublisher)],
+    oracleSources: PROTOCOL_ORACLE_PUBLISHERS,
   } as const;
   const initial = await encodeCreatePinocchioMarket({
     creator: input.owner,

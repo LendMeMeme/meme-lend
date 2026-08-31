@@ -46,6 +46,12 @@ function unsigned(value: bigint, bytes: number): Uint8Array {
   return output;
 }
 
+function signed(value: bigint, bytes: number): Uint8Array {
+  const limit = 1n << BigInt(bytes * 8 - 1);
+  if (value < -limit || value >= limit) throw new Error("Signed value overflow");
+  return unsigned(value < 0n ? (1n << BigInt(bytes * 8)) + value : value, bytes);
+}
+
 function readUnsigned(data: Uint8Array, offset: number, bytes: number): bigint {
   let value = 0n;
   for (let index = bytes - 1; index >= 0; index -= 1) {
@@ -153,6 +159,8 @@ export function decodePinocchioMarket(data: Uint8Array): PinocchioMarket {
 
 export function decodePinocchioOracleConfiguration(data: Uint8Array) {
   assertState(data, 207, 3);
+  const sourceCount = data[45];
+  if (sourceCount < 1 || sourceCount > 5) throw new Error("Invalid oracle source count");
   return {
     market: new PublicKey(data.slice(3, 35)),
     kind: data[35],
@@ -160,7 +168,11 @@ export function decodePinocchioOracleConfiguration(data: Uint8Array) {
     maxConfidenceBps: Number(readUnsigned(data, 40, 2)),
     maxDeviationBps: Number(readUnsigned(data, 42, 2)),
     priceDecimals: data[44],
-    sourceCount: data[45],
+    sourceCount,
+    sources: Array.from(
+      { length: sourceCount },
+      (_, index) => new PublicKey(data.slice(46 + index * 32, 78 + index * 32)),
+    ),
     customHighRisk: (data[206] & 1) !== 0,
   };
 }
@@ -260,6 +272,34 @@ export function pinocchioInstruction(
 
 export const pinocchioAmount = (amount: bigint) => unsigned(amount, 8);
 export const pinocchioShares = (shares: bigint) => unsigned(shares, 16);
+
+export function encodePinocchioOracleObservation(input: {
+  price: bigint;
+  confidenceBps: number;
+  deviationBps: number;
+  maxRecoverableUsdc: bigint;
+  publishedAt: bigint;
+  sequence: bigint;
+  bump: number;
+}): Uint8Array {
+  for (const [label, value] of [
+    ["confidenceBps", input.confidenceBps],
+    ["deviationBps", input.deviationBps],
+  ] as const)
+    if (!Number.isInteger(value) || value < 0 || value > 10_000)
+      throw new Error(`${label} must be between 0 and 10000`);
+  if (!Number.isInteger(input.bump) || input.bump < 0 || input.bump > 255)
+    throw new Error("Invalid oracle observation bump");
+  return concat(
+    unsigned(input.price, 16),
+    unsigned(BigInt(input.confidenceBps), 2),
+    unsigned(BigInt(input.deviationBps), 2),
+    unsigned(input.maxRecoverableUsdc, 8),
+    signed(input.publishedAt, 8),
+    unsigned(input.sequence, 8),
+    Uint8Array.of(input.bump),
+  );
+}
 
 export type OptimizedMarketConfig = {
   lltvBps: 3000 | 4000 | 5000 | 6000 | 6500;

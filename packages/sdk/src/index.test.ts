@@ -5,6 +5,7 @@ import {
   associatedTokenAddressWithBump,
   createAssociatedTokenAccountIdempotentInstruction,
   encodeCreatePinocchioMarket,
+  encodePinocchioOracleObservation,
   healthFactorBps,
   mulDivCeil,
   mulDivFloor,
@@ -90,5 +91,19 @@ describe("optimized program ABI", () => {
     expect(first.data.slice(0, 32)).toEqual(first.configHash);
     expect(first.data).toHaveLength(237);
     expect(first.data.at(-1)).toBe(7);
+  });
+
+  it("encodes bounded oracle observations using the exact optimized ABI", () => {
+    const data = encodePinocchioOracleObservation({
+      price: 1_250_000_000_000_000_000_000_000n,
+      confidenceBps: 25,
+      deviationBps: 40,
+      maxRecoverableUsdc: 50_000_000n,
+      publishedAt: 1_800_000_000n,
+      sequence: 7n,
+      bump: 254,
+    });
+    expect(data).toHaveLength(45);
+    expect(data.at(-1)).toBe(254);
   });
 });

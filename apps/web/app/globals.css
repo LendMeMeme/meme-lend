@@ -591,6 +591,21 @@ tbody tr:hover {
   color: var(--ink-soft);
   font-weight: 680;
 }
+.field-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 680;
+}
+.oracle-managed {
+  padding: 16px;
+  border: 1px solid var(--badge-border);
+  border-radius: 12px;
+  background: var(--green-soft);
+}
+.oracle-managed strong {
+  color: var(--green-strong);
+  font-size: 14px;
+}
 .field input,
 .field select {
   width: 100%;
