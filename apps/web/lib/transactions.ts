@@ -69,13 +69,25 @@ export async function buildCreateMarketTransaction(input: {
   const [globalConfig] = pinocchioPdas.globalConfig(programId);
   const global = decodePinocchioGlobalConfig(await data(input.connection, globalConfig));
   if (global.paused) throw new Error("Protocol market creation is paused");
-  const collateralMint = new PublicKey(input.collateralMint);
+  const collateralAddress = input.collateralMint.trim();
+  if (!collateralAddress) throw new Error("Enter the Solana mint address for the memecoin");
+  let collateralMint: PublicKey;
+  try {
+    collateralMint = new PublicKey(collateralAddress);
+  } catch {
+    throw new Error("The collateral mint is not a valid Solana address");
+  }
   const loanMint = global.approvedLoanMint;
   const [ci, li] = await Promise.all([
     input.connection.getAccountInfo(collateralMint),
     input.connection.getAccountInfo(loanMint),
   ]);
-  if (!ci || !li) throw new Error("Collateral or approved loan mint does not exist");
+  if (!ci)
+    throw new Error(
+      `Collateral mint ${collateralMint.toBase58()} does not exist on Solana mainnet`,
+    );
+  if (!li)
+    throw new Error(`Approved USDC mint ${loanMint.toBase58()} does not exist on this RPC network`);
   const collateralTokenProgram = ci.owner,
     loanTokenProgram = li.owner;
   for (const token of [collateralTokenProgram, loanTokenProgram])
