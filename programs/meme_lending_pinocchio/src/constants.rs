@@ -1,0 +1,5 @@
+pub const BPS_DENOMINATOR: u64 = 10_000;
+pub const RATE_SCALE: u128 = 1_000_000_000_000_000_000;
+pub const SECONDS_PER_YEAR: u64 = 31_536_000;
+pub const MAX_TOKEN_DECIMALS: u8 = 18;
+pub const MAX_ORACLE_SOURCES: usize = 5;

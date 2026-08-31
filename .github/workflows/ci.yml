@@ -27,6 +27,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo fmt --check
       - run: cargo test -p meme_lending --lib
+      - run: cargo check -p meme_lending_pinocchio --features bpf-entrypoint
+      - run: cargo test -p meme_lending_pinocchio --lib
       - run: pnpm check
       - run: pnpm test
       - run: pnpm format
