@@ -4,6 +4,39 @@ import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Connection } from "@solana/web3.js";
 import { buildCreateMarketTransaction, type RATE_MODELS } from "@/lib/transactions";
 
+type RecentBlockhash = { blockhash: string; lastValidBlockHeight: number };
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+
+async function confirmOrReconcile(
+  connection: Connection,
+  signature: string,
+  blockhash: RecentBlockhash,
+) {
+  try {
+    const confirmation = await connection.confirmTransaction(
+      { signature, ...blockhash },
+      "confirmed",
+    );
+    if (confirmation.value.err)
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    return;
+  } catch (confirmationError) {
+    for (const delay of [0, 1_000, 2_000]) {
+      if (delay) await wait(delay);
+      const status = (
+        await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })
+      ).value[0];
+      if (status?.err)
+        throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized")
+        return;
+    }
+    throw confirmationError;
+  }
+}
+
 async function errorMessage(error: unknown, connection: Connection) {
   let logs: string[] | null = null;
   if (
@@ -68,12 +101,7 @@ export function CreateMarketForm() {
       const signature = await wallet.sendTransaction(result.transaction, connection, {
         preflightCommitment: "confirmed",
       });
-      const confirmation = await connection.confirmTransaction(
-        { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
-        "confirmed",
-      );
-      if (confirmation.value.err)
-        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      await confirmOrReconcile(connection, signature, latest);
       createdMarket = result.market.toBase58();
 
       setStatus("seeding");
@@ -94,18 +122,7 @@ export function CreateMarketForm() {
         connection,
         { preflightCommitment: "confirmed" },
       );
-      const liquidityConfirmation = await connection.confirmTransaction(
-        {
-          signature: liquiditySignature,
-          blockhash: liquidityBlockhash.blockhash,
-          lastValidBlockHeight: liquidityBlockhash.lastValidBlockHeight,
-        },
-        "confirmed",
-      );
-      if (liquidityConfirmation.value.err)
-        throw new Error(
-          `Market was created, but liquidity transaction failed: ${JSON.stringify(liquidityConfirmation.value.err)}`,
-        );
+      await confirmOrReconcile(connection, liquiditySignature, liquidityBlockhash);
       setMessage(
         `Market ${result.market.toBase58()} launched in ${signature} and funded with ${initialLiquidity} USDC in ${liquiditySignature}`,
       );
