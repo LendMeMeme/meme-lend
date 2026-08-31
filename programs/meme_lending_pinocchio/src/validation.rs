@@ -1,5 +1,8 @@
 use pinocchio::{error::ProgramError, AccountView, Address};
 use pinocchio_token::{TokenInterface, TokenProgram};
+use pinocchio_token_2022::state::{
+    ExtensionType, Mint as Token2022Mint, StateWithExtensions, MAX_EXTENSIONS,
+};
 
 #[inline(always)]
 pub fn signer(account: &AccountView) -> Result<(), ProgramError> {
@@ -85,4 +88,27 @@ pub fn token_account(
                 .map_err(|_| ProgramError::InvalidAccountData)?,
         ),
     })
+}
+
+pub fn mint_decimals(mint: &AccountView, token_program: &AccountView) -> Result<u8, ProgramError> {
+    if !token_program.executable() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    TokenProgram::verify(token_program.address())?;
+    if token_program.address() == &pinocchio_token::ID {
+        let state = pinocchio_token::state::Mint::from_account_view(mint)?;
+        if !state.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        return Ok(state.decimals());
+    }
+    let state = StateWithExtensions::<Token2022Mint>::from_account_view(mint)?;
+    if !state.base.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    let mut extensions = [ExtensionType::Uninitialized; MAX_EXTENSIONS];
+    if state.write_extension_types(&mut extensions)? != 0 {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(state.base.decimals())
 }

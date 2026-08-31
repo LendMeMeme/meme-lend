@@ -5,6 +5,7 @@ use crate::codec::{Decoder, Encoder};
 pub const STATE_VERSION: u8 = 1;
 pub const ADDRESS_BYTES: usize = 32;
 pub const MARKET_FLAG_BORROWING_PAUSED: u8 = 1;
+pub const MARKET_FLAG_REWARDS_ENABLED: u8 = 2;
 pub const TOKEN_FLAG_COLLATERAL_2022: u8 = 1;
 pub const TOKEN_FLAG_LOAN_2022: u8 = 2;
 pub const GLOBAL_FLAG_PAUSED: u8 = 1;
@@ -303,7 +304,9 @@ impl Market {
             last_accrual_timestamp: decoder.i64()?,
         };
         decoder.finish()?;
-        if value.rate_model_id > 1 || value.flags & !MARKET_FLAG_BORROWING_PAUSED != 0 {
+        if value.rate_model_id > 1
+            || value.flags & !(MARKET_FLAG_BORROWING_PAUSED | MARKET_FLAG_REWARDS_ENABLED) != 0
+        {
             return Err(ProgramError::InvalidAccountData);
         }
         if value.token_program_flags & !(TOKEN_FLAG_COLLATERAL_2022 | TOKEN_FLAG_LOAN_2022) != 0 {
@@ -369,7 +372,9 @@ impl<'a> MarketMut<'a> {
         if data.len() != Market::LEN
             || data[0] != STATE_VERSION
             || data[1] != AccountKind::Market as u8
-            || data[Self::FLAGS_OFFSET] & !MARKET_FLAG_BORROWING_PAUSED != 0
+            || data[Self::FLAGS_OFFSET]
+                & !(MARKET_FLAG_BORROWING_PAUSED | MARKET_FLAG_REWARDS_ENABLED)
+                != 0
         {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -676,7 +681,7 @@ mod tests {
             creator_fee_bps: 0,
             protocol_fee_bps: 0,
             rate_model_id: 0,
-            flags: 2,
+            flags: 4,
             token_program_flags: 0,
             market_borrow_cap: 1,
             wallet_borrow_cap: 1,

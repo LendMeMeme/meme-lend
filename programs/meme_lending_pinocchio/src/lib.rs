@@ -48,6 +48,15 @@ mod entrypoint {
             LendingInstruction::AccrueInterest => {
                 crate::handlers::accrue_interest(_program_id, _accounts, instruction_data)
             }
+            LendingInstruction::SupplyUsdc => {
+                crate::handlers::supply_usdc(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::DepositCollateral => {
+                crate::handlers::deposit_collateral(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::RepayUsdc => {
+                crate::handlers::repay_usdc(_program_id, _accounts, instruction_data)
+            }
             _ => Err(pinocchio::error::ProgramError::InvalidInstructionData),
         }
     }
