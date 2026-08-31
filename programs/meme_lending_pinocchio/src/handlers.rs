@@ -11,12 +11,12 @@ use crate::{
     pda::{
         self, ASSOCIATED_TOKEN_PROGRAM, BORROWER_POSITION_SEED, GLOBAL_CONFIG_SEED,
         LENDER_POSITION_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, ORACLE_CONFIG_SEED,
-        ORACLE_OBSERVATION_SEED,
+        ORACLE_OBSERVATION_SEED, RESERVE_SEED, RESERVE_VAULT_SEED,
     },
     state::{
-        AccountHeader, AccountKind, BorrowerPosition, GlobalConfig, LenderPosition, Market,
-        OracleConfiguration, OracleObservation, GLOBAL_FLAG_PAUSED, MARKET_FLAG_BORROWING_PAUSED,
-        MARKET_FLAG_REWARDS_ENABLED, STATE_VERSION,
+        AccountHeader, AccountKind, BorrowerPosition, FirstLossReserve, GlobalConfig,
+        LenderPosition, Market, OracleConfiguration, OracleObservation, GLOBAL_FLAG_PAUSED,
+        MARKET_FLAG_BORROWING_PAUSED, MARKET_FLAG_REWARDS_ENABLED, STATE_VERSION,
     },
     validation, INITIAL_AUTHORITY,
 };
@@ -69,6 +69,27 @@ fn verify_ata_vault(
     if state.mint != *mint.address().as_array()
         || state.authority != *market_authority.address().as_array()
     {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(())
+}
+
+fn verify_reserve_vault(
+    program_id: &Address,
+    vault: &AccountView,
+    market_account: &AccountView,
+    market: &Market,
+    market_authority: &AccountView,
+    token_program: &AccountView,
+) -> ProgramResult {
+    pda::verify(
+        vault.address(),
+        &[RESERVE_VAULT_SEED, market_account.address().as_ref()],
+        market.vault_bumps[2],
+        program_id,
+    )?;
+    let state = validation::token_account(vault, token_program)?;
+    if state.mint != market.loan_mint || state.authority != *market_authority.address().as_array() {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
@@ -1104,4 +1125,418 @@ pub fn submit_oracle_observation(
         sequence,
     }
     .encode(&mut observation_account.try_borrow_mut()?)
+}
+
+pub fn deposit_first_loss_reserve(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [depositor, market_account, reserve_account, depositor_tokens, reserve_vault, loan_mint, market_authority, token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(depositor)?;
+    for account in [&*reserve_account, &*depositor_tokens, &*reserve_vault] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    decoder.finish()?;
+    if amount == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if loan_mint.address().as_array() != &market.loan_mint {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    verify_reserve_vault(
+        program_id,
+        reserve_vault,
+        market_account,
+        &market,
+        market_authority,
+        token_program,
+    )?;
+    validation::owner(reserve_account, program_id)?;
+    let mut reserve = FirstLossReserve::decode(&reserve_account.try_borrow()?)?;
+    pda::verify(
+        reserve_account.address(),
+        &[RESERVE_SEED, market_account.address().as_ref()],
+        reserve.header.bump,
+        program_id,
+    )?;
+    if reserve.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let source = validation::token_account(depositor_tokens, token_program)?;
+    if source.mint != market.loan_mint || source.authority != *depositor.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let decimals = validation::mint_decimals(loan_mint, token_program)?;
+    crate::cpi::transfer_checked(
+        token_program,
+        depositor_tokens,
+        loan_mint,
+        reserve_vault,
+        depositor,
+        amount,
+        decimals,
+        &[],
+    )?;
+    reserve.deposited = reserve
+        .deposited
+        .checked_add(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    reserve.encode(&mut reserve_account.try_borrow_mut()?)
+}
+
+pub fn claim_market_creator_fees(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [creator, market_account, destination, liquidity_vault, loan_mint, market_authority, token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(creator)?;
+    for account in [&*market_account, &*destination, &*liquidity_vault] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    decoder.finish()?;
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if market.creator != *creator.address().as_array()
+        || loan_mint.address().as_array() != &market.loan_mint
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    let destination_state = validation::token_account(destination, token_program)?;
+    if destination_state.mint != market.loan_mint
+        || destination_state.authority != *creator.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let decimals = validation::mint_decimals(loan_mint, token_program)?;
+    let cash = validation::token_account(liquidity_vault, token_program)?.amount;
+    crate::engine::accrue_market(&mut market, cash, Clock::get()?.unix_timestamp)?;
+    if amount == 0 || amount > market.creator_fees_claimable || amount > cash {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    market.creator_fees_claimable = market
+        .creator_fees_claimable
+        .checked_sub(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let bump = [market.authority_bump];
+    let signer_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &bump
+    );
+    crate::cpi::transfer_checked(
+        token_program,
+        liquidity_vault,
+        loan_mint,
+        destination,
+        market_authority,
+        amount,
+        decimals,
+        core::slice::from_ref(&Signer::from(&signer_seeds)),
+    )?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn claim_protocol_fees(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [authority, global_account, recipient, market_account, destination, liquidity_vault, loan_mint, market_authority, token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(authority)?;
+    for account in [&*market_account, &*destination, &*liquidity_vault] {
+        validation::writable(account)?;
+    }
+    let global = decode_global(program_id, global_account)?;
+    if global.authority != *authority.address().as_array()
+        || global.protocol_fee_recipient != *recipient.address().as_array()
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    decoder.finish()?;
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if loan_mint.address().as_array() != &market.loan_mint {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    let destination_state = validation::token_account(destination, token_program)?;
+    if destination_state.mint != market.loan_mint
+        || destination_state.authority != *recipient.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let decimals = validation::mint_decimals(loan_mint, token_program)?;
+    let cash = validation::token_account(liquidity_vault, token_program)?.amount;
+    crate::engine::accrue_market(&mut market, cash, Clock::get()?.unix_timestamp)?;
+    if amount == 0 || amount > market.protocol_fees_claimable || amount > cash {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    market.protocol_fees_claimable = market
+        .protocol_fees_claimable
+        .checked_sub(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let bump = [market.authority_bump];
+    let signer_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &bump
+    );
+    crate::cpi::transfer_checked(
+        token_program,
+        liquidity_vault,
+        loan_mint,
+        destination,
+        market_authority,
+        amount,
+        decimals,
+        core::slice::from_ref(&Signer::from(&signer_seeds)),
+    )?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn liquidate(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [liquidator, market_account, position_account, liquidator_usdc, liquidator_collateral, liquidity_vault, collateral_vault, reserve_account, reserve_vault, loan_mint, collateral_mint, market_authority, loan_token_program, collateral_token_program, oracle_config_account, oracle_observation_account] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(liquidator)?;
+    for account in [
+        &*market_account,
+        &*position_account,
+        &*liquidator_usdc,
+        &*liquidator_collateral,
+        &*liquidity_vault,
+        &*collateral_vault,
+        &*reserve_account,
+        &*reserve_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let requested = decoder.u64()?;
+    decoder.finish()?;
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if loan_mint.address().as_array() != &market.loan_mint
+        || collateral_mint.address().as_array() != &market.collateral_mint
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        loan_token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    verify_ata_vault(
+        collateral_vault,
+        market_authority,
+        collateral_token_program,
+        collateral_mint,
+        market.vault_bumps[1],
+    )?;
+    verify_reserve_vault(
+        program_id,
+        reserve_vault,
+        market_account,
+        &market,
+        market_authority,
+        loan_token_program,
+    )?;
+    let (oracle_config, observation) = decode_oracle(
+        program_id,
+        market_account,
+        oracle_config_account,
+        oracle_observation_account,
+    )?;
+    let now = Clock::get()?.unix_timestamp;
+    crate::engine::validate_oracle(&oracle_config, &observation, now)?;
+    validation::owner(position_account, program_id)?;
+    let mut position = BorrowerPosition::decode(&position_account.try_borrow()?)?;
+    let borrower = Address::new_from_array(position.owner);
+    pda::verify(
+        position_account.address(),
+        &[
+            BORROWER_POSITION_SEED,
+            market_account.address().as_ref(),
+            borrower.as_ref(),
+        ],
+        position.header.bump,
+        program_id,
+    )?;
+    if position.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    validation::owner(reserve_account, program_id)?;
+    let mut reserve = FirstLossReserve::decode(&reserve_account.try_borrow()?)?;
+    pda::verify(
+        reserve_account.address(),
+        &[RESERVE_SEED, market_account.address().as_ref()],
+        reserve.header.bump,
+        program_id,
+    )?;
+    if reserve.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let liquidator_loan = validation::token_account(liquidator_usdc, loan_token_program)?;
+    let liquidator_collat =
+        validation::token_account(liquidator_collateral, collateral_token_program)?;
+    if liquidator_loan.mint != market.loan_mint
+        || liquidator_loan.authority != *liquidator.address().as_array()
+        || liquidator_collat.mint != market.collateral_mint
+        || liquidator_collat.authority != *liquidator.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let loan_decimals = validation::mint_decimals(loan_mint, loan_token_program)?;
+    let collateral_decimals = validation::mint_decimals(collateral_mint, collateral_token_program)?;
+    let cash = validation::token_account(liquidity_vault, loan_token_program)?.amount;
+    let reserve_cash = validation::token_account(reserve_vault, loan_token_program)?.amount;
+    crate::engine::accrue_market(&mut market, cash, now)?;
+    let debt = crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?;
+    let value = crate::math::collateral_value(
+        position.collateral_amount,
+        collateral_decimals,
+        observation.price,
+        oracle_config.price_decimals,
+    )?;
+    if debt <= crate::math::max_debt_for_collateral(value, market.lltv_bps)? {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let (repaid, seized) = crate::math::liquidation_amounts(
+        requested,
+        debt,
+        position.collateral_amount,
+        collateral_decimals,
+        observation.price,
+        oracle_config.price_decimals,
+        market.close_factor_bps,
+        market.liquidation_bonus_bps,
+    )?;
+    let shares = crate::math::liquidation_shares_to_burn(repaid, debt, position.borrow_shares)?;
+    crate::cpi::transfer_checked(
+        loan_token_program,
+        liquidator_usdc,
+        loan_mint,
+        liquidity_vault,
+        liquidator,
+        repaid,
+        loan_decimals,
+        &[],
+    )?;
+    let authority_bump = [market.authority_bump];
+    let authority_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &authority_bump
+    );
+    let authority_signer = Signer::from(&authority_seeds);
+    crate::cpi::transfer_checked(
+        collateral_token_program,
+        collateral_vault,
+        collateral_mint,
+        liquidator_collateral,
+        market_authority,
+        seized,
+        collateral_decimals,
+        core::slice::from_ref(&authority_signer),
+    )?;
+    position.borrow_shares = position
+        .borrow_shares
+        .checked_sub(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    position.collateral_amount = position
+        .collateral_amount
+        .checked_sub(seized)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_borrow_shares = market
+        .total_borrow_shares
+        .checked_sub(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_debt = market
+        .total_debt
+        .checked_sub(u128::from(repaid))
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if position.collateral_amount == 0 && position.borrow_shares > 0 {
+        let bad_debt =
+            crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?;
+        market.total_borrow_shares = market
+            .total_borrow_shares
+            .checked_sub(position.borrow_shares)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        market.total_debt = market
+            .total_debt
+            .checked_sub(u128::from(bad_debt))
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        position.borrow_shares = 0;
+        market.bad_debt = market
+            .bad_debt
+            .checked_add(bad_debt)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        let absorbed = bad_debt.min(reserve_cash).min(reserve.deposited);
+        if absorbed > 0 {
+            crate::cpi::transfer_checked(
+                loan_token_program,
+                reserve_vault,
+                loan_mint,
+                liquidity_vault,
+                market_authority,
+                absorbed,
+                loan_decimals,
+                core::slice::from_ref(&authority_signer),
+            )?;
+            reserve.deposited = reserve
+                .deposited
+                .checked_sub(absorbed)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+            reserve.absorbed_losses = reserve
+                .absorbed_losses
+                .checked_add(absorbed)
+                .ok_or(ProgramError::ArithmeticOverflow)?;
+        }
+    }
+    position.encode(&mut position_account.try_borrow_mut()?)?;
+    reserve.encode(&mut reserve_account.try_borrow_mut()?)?;
+    market.encode(&mut market_account.try_borrow_mut()?)
 }

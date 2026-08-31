@@ -223,6 +223,35 @@ pub struct MarketRewards {
 
 impl MarketRewards {
     pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES * 2 + 16 + 8;
+
+    pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mut decoder = Decoder::new(data);
+        let value = Self {
+            header: AccountHeader::decode(&mut decoder, AccountKind::MarketRewards)?,
+            market: *decoder.take()?,
+            reward_mint: *decoder.take()?,
+            reward_index: decoder.u128()?,
+            undistributed_rewards: decoder.u64()?,
+        };
+        decoder.finish()?;
+        Ok(value)
+    }
+
+    pub fn encode(&self, data: &mut [u8]) -> Result<(), ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+        let mut encoder = Encoder::new(data);
+        self.header.encode(&mut encoder)?;
+        encoder.put(&self.market)?;
+        encoder.put(&self.reward_mint)?;
+        encoder.u128(self.reward_index)?;
+        encoder.u64(self.undistributed_rewards)?;
+        encoder.finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +264,33 @@ pub struct FirstLossReserve {
 
 impl FirstLossReserve {
     pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES + 8 + 8;
+
+    pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mut decoder = Decoder::new(data);
+        let value = Self {
+            header: AccountHeader::decode(&mut decoder, AccountKind::FirstLossReserve)?,
+            market: *decoder.take()?,
+            deposited: decoder.u64()?,
+            absorbed_losses: decoder.u64()?,
+        };
+        decoder.finish()?;
+        Ok(value)
+    }
+
+    pub fn encode(&self, data: &mut [u8]) -> Result<(), ProgramError> {
+        if data.len() != Self::LEN {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+        let mut encoder = Encoder::new(data);
+        self.header.encode(&mut encoder)?;
+        encoder.put(&self.market)?;
+        encoder.u64(self.deposited)?;
+        encoder.u64(self.absorbed_losses)?;
+        encoder.finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -811,5 +867,24 @@ mod tests {
     fn derived_vaults_keep_rewards_and_reserve_compact() {
         assert_eq!(MarketRewards::LEN, 91);
         assert_eq!(FirstLossReserve::LEN, 51);
+        let rewards = MarketRewards {
+            header: header(AccountKind::MarketRewards),
+            market: [1; 32],
+            reward_mint: [2; 32],
+            reward_index: 3,
+            undistributed_rewards: 4,
+        };
+        let mut reward_bytes = [0_u8; MarketRewards::LEN];
+        rewards.encode(&mut reward_bytes).unwrap();
+        assert_eq!(MarketRewards::decode(&reward_bytes).unwrap(), rewards);
+        let reserve = FirstLossReserve {
+            header: header(AccountKind::FirstLossReserve),
+            market: [1; 32],
+            deposited: 2,
+            absorbed_losses: 3,
+        };
+        let mut reserve_bytes = [0_u8; FirstLossReserve::LEN];
+        reserve.encode(&mut reserve_bytes).unwrap();
+        assert_eq!(FirstLossReserve::decode(&reserve_bytes).unwrap(), reserve);
     }
 }

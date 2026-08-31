@@ -69,6 +69,22 @@ mod entrypoint {
             LendingInstruction::RepayUsdc => {
                 crate::handlers::repay_usdc(_program_id, _accounts, instruction_data)
             }
+            LendingInstruction::DepositFirstLossReserve => {
+                crate::handlers::deposit_first_loss_reserve(
+                    _program_id,
+                    _accounts,
+                    instruction_data,
+                )
+            }
+            LendingInstruction::ClaimMarketCreatorFees => {
+                crate::handlers::claim_market_creator_fees(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::ClaimProtocolFees => {
+                crate::handlers::claim_protocol_fees(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::Liquidate => {
+                crate::handlers::liquidate(_program_id, _accounts, instruction_data)
+            }
             _ => Err(pinocchio::error::ProgramError::InvalidInstructionData),
         }
     }
