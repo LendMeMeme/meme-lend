@@ -1,6 +1,6 @@
-# Meme Lend
+# Lend Meme Loans
 
-Meme Lend is an isolated-market lending protocol for borrowing USDC against memecoin
+Lend Meme Loans is an isolated-market lending protocol for borrowing USDC against memecoin
 collateral on Solana. Every market owns separate vaults, positions, accounting, oracle
 configuration, reserve, and bad-debt ledger.
 

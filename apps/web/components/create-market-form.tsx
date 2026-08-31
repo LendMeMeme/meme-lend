@@ -79,8 +79,23 @@ export function CreateMarketForm() {
   return (
     <section className="card panel span-7">
       <h2>Market configuration</h2>
+      <div className="asset-pair" aria-label="Market asset pair">
+        <div>
+          <span>Borrow and lend</span>
+          <strong>USDC</strong>
+          <small>Fixed protocol loan asset</small>
+        </div>
+        <span className="asset-pair-arrow" aria-hidden="true">
+          ↔
+        </span>
+        <div>
+          <span>Collateral</span>
+          <strong>Your memecoin</strong>
+          <small>Selected by mint address below</small>
+        </div>
+      </div>
       <div className="field">
-        <label htmlFor="collateral-mint">Collateral mint</label>
+        <label htmlFor="collateral-mint">Memecoin collateral mint</label>
         <input
           id="collateral-mint"
           value={collateralMint}
@@ -88,14 +103,14 @@ export function CreateMarketForm() {
             setCollateralMint(e.target.value);
             resetReview();
           }}
-          placeholder="Solana token mint address"
+          placeholder="Memecoin mint address"
         />
         <span className="help">
           Token-2022 mints with unsupported extensions are rejected by the program.
         </span>
       </div>
       <div className="field">
-        <label htmlFor="oracle-publisher">Custom oracle publisher</label>
+        <label htmlFor="oracle-publisher">Oracle publisher wallet</label>
         <input
           id="oracle-publisher"
           value={oraclePublisher}
@@ -103,11 +118,12 @@ export function CreateMarketForm() {
             setOraclePublisher(e.target.value);
             resetReview();
           }}
-          placeholder="Publisher public key"
+          placeholder="Wallet authorized to publish prices"
         />
         <span className="help">
-          Native Pyth, Switchboard, and DEX adapters remain disabled until their account parsers are
-          deployed. Custom markets are prominently high risk.
+          You provide this public key. Its signer must submit fresh collateral/USDC price and
+          recoverable-liquidity observations after creation. If updates stop, borrowing and
+          collateral withdrawals stop; repayment and collateral deposits remain available.
         </span>
       </div>
       <div className="field">
@@ -121,8 +137,8 @@ export function CreateMarketForm() {
           }}
         >
           <option value={5000}>50% — conservative preset</option>
-          <option value={6500}>65% — standard preset</option>
-          <option value={6000}>60% — higher leverage</option>
+          <option value={6000}>60% — standard preset</option>
+          <option value={6500}>65% — higher leverage</option>
         </select>
       </div>
       <div className="field">

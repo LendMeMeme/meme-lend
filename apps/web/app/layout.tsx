@@ -7,7 +7,7 @@ import { WalletControl } from "@/components/wallet-control";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export const metadata: Metadata = {
-  title: { default: "Meme Lend", template: "%s · Meme Lend" },
+  title: { default: "Lend Meme Loans", template: "%s · Lend Meme Loans" },
   description: "Create isolated USDC lending markets for memecoin collateral on Solana.",
 };
 export const viewport: Viewport = {
@@ -43,7 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="brand-mark">
                   <Image src="/lend-logo.png" alt="" width={32} height={32} priority />
                 </span>
-                <span>Meme Lend</span>
+                <span>Lend Meme Loans</span>
               </Link>
               <nav className="nav-links" aria-label="Primary">
                 {links.map(([label, href]) => (
