@@ -1,8 +1,26 @@
 "use client";
 import { useState } from "react";
 import { useConnection, useWallet } from "@/components/wallet-context";
-import type { Transaction } from "@solana/web3.js";
+import type { Connection } from "@solana/web3.js";
 import { buildCreateMarketTransaction, type RATE_MODELS } from "@/lib/transactions";
+
+async function errorMessage(error: unknown, connection: Connection) {
+  let logs: string[] | null = null;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "getLogs" in error &&
+    typeof error.getLogs === "function"
+  ) {
+    try {
+      logs = await (error.getLogs as (connection: Connection) => Promise<string[]>)(connection);
+    } catch {
+      // Preserve the original wallet/RPC error when log retrieval is unavailable.
+    }
+  }
+  const message = error instanceof Error ? error.message : "Market launch failed";
+  return logs?.length ? `${message}\n${logs.slice(-8).join("\n")}` : message;
+}
 
 export function CreateMarketForm() {
   const wallet = useWallet();
@@ -12,23 +30,20 @@ export function CreateMarketForm() {
   const [rateModel, setRateModel] = useState<keyof typeof RATE_MODELS>("conservative");
   const [marketCap, setMarketCap] = useState("");
   const [walletCap, setWalletCap] = useState("");
-  const [prepared, setPrepared] = useState<{ transaction: Transaction; market: string } | null>(
-    null,
-  );
+  const [initialLiquidity, setInitialLiquidity] = useState("");
   const [status, setStatus] = useState<
-    "idle" | "simulating" | "reviewed" | "sending" | "confirmed" | "failed"
+    "idle" | "preparing" | "sending" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
   const [fee, setFee] = useState<number | null>(null);
   const resetReview = () => {
-    setPrepared(null);
     setStatus("idle");
     setMessage("");
     setFee(null);
   };
-  const review = async () => {
+  const launch = async () => {
     if (!wallet.publicKey) return;
-    setStatus("simulating");
+    setStatus("preparing");
     try {
       const result = await buildCreateMarketTransaction({
         collateralMint,
@@ -36,6 +51,7 @@ export function CreateMarketForm() {
         rateModel,
         marketBorrowCap: marketCap,
         walletBorrowCap: walletCap,
+        initialLiquidity,
         owner: wallet.publicKey,
         connection,
       });
@@ -52,29 +68,22 @@ export function CreateMarketForm() {
       setFee(
         (await connection.getFeeForMessage(result.transaction.compileMessage(), "confirmed")).value,
       );
-      setPrepared({ transaction: result.transaction, market: result.market.toBase58() });
-      setMessage(`Simulation succeeded. Immutable market address: ${result.market.toBase58()}`);
-      setStatus("reviewed");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Market simulation failed");
-      setStatus("failed");
-    }
-  };
-  const submit = async () => {
-    if (!prepared) return;
-    setStatus("sending");
-    try {
-      const signature = await wallet.sendTransaction(prepared.transaction, connection, {
+      setStatus("sending");
+      const signature = await wallet.sendTransaction(result.transaction, connection, {
         preflightCommitment: "confirmed",
       });
-      const confirmation = await connection.confirmTransaction(signature, "confirmed");
+      const confirmation = await connection.confirmTransaction(
+        { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
+        "confirmed",
+      );
       if (confirmation.value.err)
         throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-      setMessage(`Market ${prepared.market} confirmed in transaction ${signature}`);
+      setMessage(
+        `Market ${result.market.toBase58()} launched with ${initialLiquidity} USDC in transaction ${signature}`,
+      );
       setStatus("confirmed");
-      setPrepared(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Wallet submission failed");
+      setMessage(await errorMessage(error, connection));
       setStatus("failed");
     }
   };
@@ -174,6 +183,22 @@ export function CreateMarketForm() {
           }}
         />
       </div>
+      <div className="field">
+        <label htmlFor="initial-liquidity">Initial USDC liquidity</label>
+        <input
+          id="initial-liquidity"
+          inputMode="decimal"
+          value={initialLiquidity}
+          onChange={(e) => {
+            setInitialLiquidity(e.target.value);
+            resetReview();
+          }}
+          placeholder="Amount supplied when the market launches"
+        />
+        <span className="help">
+          Market creation and the first USDC supply are atomic: either both succeed or neither does.
+        </span>
+      </div>
       <dl>
         <div className="definition">
           <dt>Network fee</dt>
@@ -190,23 +215,21 @@ export function CreateMarketForm() {
         style={{ width: "100%" }}
         disabled={
           !wallet.connected ||
-          status === "simulating" ||
+          status === "preparing" ||
           status === "sending" ||
           status === "confirmed"
         }
-        onClick={status === "reviewed" ? submit : review}
+        onClick={launch}
       >
         {!wallet.connected
           ? "Connect wallet to continue"
-          : status === "simulating"
-            ? "Simulating…"
+          : status === "preparing"
+            ? "Checking transaction…"
             : status === "sending"
               ? "Waiting for wallet…"
-              : status === "reviewed"
-                ? "Create immutable market"
-                : status === "confirmed"
+              : status === "confirmed"
                   ? "Market confirmed"
-                  : "Review market creation"}
+                  : "Launch market"}
       </button>
     </section>
   );

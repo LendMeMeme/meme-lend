@@ -62,6 +62,7 @@ export async function buildCreateMarketTransaction(input: {
   rateModel: keyof typeof RATE_MODELS;
   marketBorrowCap: string;
   walletBorrowCap: string;
+  initialLiquidity: string;
   owner: PublicKey;
   connection: Connection;
 }): Promise<{ transaction: Transaction; market: PublicKey }> {
@@ -97,6 +98,7 @@ export async function buildCreateMarketTransaction(input: {
   validateSupportedMintData(ci.data, collateralTokenProgram, "Collateral");
   validateSupportedMintData(li.data, loanTokenProgram, "Approved USDC loan mint");
   const decimals = await getMintDecimals(input.connection, loanMint, loanTokenProgram);
+  const initialLiquidity = parseUnits(input.initialLiquidity, decimals);
   const config = {
     lltvBps: input.lltvBps,
     liquidationBonusBps: 1000,
@@ -179,6 +181,36 @@ export async function buildCreateMarketTransaction(input: {
         m(SystemProgram.programId),
       ],
       encoded.data,
+      programId,
+    ),
+  );
+  const ownerLoan = associatedTokenAddress(loanMint, input.owner, loanTokenProgram);
+  const ownerLoanAccount = await input.connection.getAccountInfo(ownerLoan, "confirmed");
+  if (!ownerLoanAccount)
+    throw new Error("Your wallet does not have a USDC token account to seed this market");
+  if (!ownerLoanAccount.owner.equals(loanTokenProgram) || ownerLoanAccount.data.length < 165)
+    throw new Error("Your wallet's USDC token account is invalid");
+  const ownerLoanMint = new PublicKey(ownerLoanAccount.data.slice(0, 32));
+  if (!ownerLoanMint.equals(loanMint)) throw new Error("Your token account is not mainnet USDC");
+  const ownerLoanBalance = ownerLoanAccount.data.readBigUInt64LE(64);
+  if (ownerLoanBalance < initialLiquidity)
+    throw new Error("Your wallet does not have enough USDC for the initial liquidity amount");
+  const [lender, lenderBump] = pinocchioPdas.lenderPosition(market, input.owner, programId);
+  transaction.add(
+    pinocchioInstruction(
+      PINOCCHIO_TAG.supplyUsdc,
+      [
+        m(input.owner, true, true),
+        m(market, true),
+        m(lender, true),
+        m(ownerLoan, true),
+        m(liquidityVault, true),
+        m(loanMint),
+        m(authority),
+        m(loanTokenProgram),
+        m(SystemProgram.programId),
+      ],
+      Buffer.concat([Buffer.from(pinocchioAmount(initialLiquidity)), Buffer.from([lenderBump])]),
       programId,
     ),
   );
