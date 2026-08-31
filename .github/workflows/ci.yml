@@ -14,13 +14,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.19.0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: pnpm
+      - run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.89.0
