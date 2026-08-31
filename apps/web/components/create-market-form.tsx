@@ -43,8 +43,12 @@ export function CreateMarketForm() {
       result.transaction.feePayer = wallet.publicKey;
       result.transaction.recentBlockhash = latest.blockhash;
       const simulation = await connection.simulateTransaction(result.transaction);
-      if (simulation.value.err)
-        throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
+      if (simulation.value.err) {
+        const logs = simulation.value.logs?.slice(-6).join("\n");
+        throw new Error(
+          `Simulation failed: ${JSON.stringify(simulation.value.err)}${logs ? `\n${logs}` : ""}`,
+        );
+      }
       setFee(
         (await connection.getFeeForMessage(result.transaction.compileMessage(), "confirmed")).value,
       );

@@ -40,6 +40,17 @@ const api = createServer(async (request, response) => {
       response.end(JSON.stringify({ error: "Method not allowed" }));
       return;
     }
+    if (url.pathname === "/") {
+      response.end(
+        JSON.stringify({
+          service: "Lend Meme Loans indexer",
+          ok: true,
+          commitment: "finalized",
+          endpoints: ["/health", "/markets", "/markets/:address"],
+        }),
+      );
+      return;
+    }
     if (url.pathname === "/health") {
       response.end(JSON.stringify({ ok: true, commitment: "finalized" }));
       return;

@@ -6,6 +6,7 @@ import {
   associatedTokenAddressWithBump,
   createAssociatedTokenAccountIdempotentInstruction,
   getMintDecimals,
+  validateSupportedMintData,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   PINOCCHIO_PROGRAM_ID,
@@ -80,6 +81,9 @@ export async function buildCreateMarketTransaction(input: {
   for (const token of [collateralTokenProgram, loanTokenProgram])
     if (!token.equals(TOKEN_PROGRAM_ID) && !token.equals(TOKEN_2022_PROGRAM_ID))
       throw new Error("Unsupported token program");
+  if (collateralMint.equals(loanMint)) throw new Error("Collateral cannot be the USDC loan mint");
+  validateSupportedMintData(ci.data, collateralTokenProgram, "Collateral");
+  validateSupportedMintData(li.data, loanTokenProgram, "Approved USDC loan mint");
   const decimals = await getMintDecimals(input.connection, loanMint, loanTokenProgram);
   const config = {
     lltvBps: input.lltvBps,

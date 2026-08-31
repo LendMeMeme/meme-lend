@@ -32,6 +32,11 @@ Configure the three Railway services with these commands:
 Do not remove the explicit Node provider unless each service is moved to an application-specific
 root directory. Verify that every deployment plan includes Node and pnpm before its build step.
 
+Set `SOLANA_RPC_HTTP` on the web service to a reliable private mainnet RPC URL. The browser uses the
+same-origin `/api/solana-rpc` route so provider credentials are not exposed and RPC providers do not
+need to permit cross-origin browser requests. Do not set the obsolete `NEXT_PUBLIC_SOLANA_RPC_HTTP`
+or `NEXT_PUBLIC_SOLANA_RPC_WS` variables.
+
 ## Current readiness boundary
 
 Native Rust, TypeScript, indexer/SDK tests, the optimized SBF ELF execution test, and the Next.js

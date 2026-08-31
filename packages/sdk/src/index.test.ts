@@ -12,6 +12,8 @@ import {
   PINOCCHIO_TAG,
   pinocchioPdas,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  validateSupportedMintData,
 } from "./index.js";
 describe("fixed point math", () => {
   it("rounds claims down and debt up", () => {
@@ -24,6 +26,19 @@ describe("fixed point math", () => {
 });
 
 describe("optimized program ABI", () => {
+  it("rejects uninitialized mints and Token-2022 extension data before submission", () => {
+    const mint = new Uint8Array(82);
+    mint[44] = 6;
+    mint[45] = 1;
+    expect(validateSupportedMintData(mint, TOKEN_PROGRAM_ID)).toBe(6);
+    expect(() => validateSupportedMintData(new Uint8Array(82), TOKEN_PROGRAM_ID)).toThrow(
+      "not an initialized token mint",
+    );
+    expect(() =>
+      validateSupportedMintData(new Uint8Array(166).fill(1), TOKEN_2022_PROGRAM_ID, "Collateral"),
+    ).toThrow("Token-2022 extensions");
+  });
+
   it("derives and creates canonical associated token accounts without the SPL client bundle", () => {
     const owner = PublicKey.unique();
     const mint = PublicKey.unique();

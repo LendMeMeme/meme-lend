@@ -32,10 +32,12 @@ const Context = createContext<WalletState | null>(null);
 export function WalletContext({ children }: { children: React.ReactNode }) {
   const connection = useMemo(
     () =>
-      new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_HTTP ?? "http://127.0.0.1:8899", {
-        commitment: "confirmed",
-        wsEndpoint: process.env.NEXT_PUBLIC_SOLANA_RPC_WS,
-      }),
+      new Connection(
+        typeof window === "undefined"
+          ? "http://127.0.0.1:3000/api/solana-rpc"
+          : `${window.location.origin}/api/solana-rpc`,
+        { commitment: "confirmed" },
+      ),
     [],
   );
   const [provider, setProvider] = useState<InjectedWallet | null>(null);

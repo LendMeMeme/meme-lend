@@ -6,6 +6,22 @@ export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
+export function validateSupportedMintData(
+  data: Uint8Array,
+  tokenProgram: PublicKey,
+  label = "Token",
+): number {
+  if (data.length < 82 || data[45] !== 1) {
+    throw new Error(`${label} address is not an initialized token mint`);
+  }
+  if (tokenProgram.equals(TOKEN_2022_PROGRAM_ID) && data.length > 82) {
+    throw new Error(
+      `${label} uses Token-2022 extensions that this protocol does not support`,
+    );
+  }
+  return data[44];
+}
+
 export function associatedTokenAddress(
   mint: PublicKey,
   owner: PublicKey,
@@ -55,7 +71,5 @@ export async function getMintDecimals(
   if (!account) throw new Error(`Mint account does not exist: ${mint.toBase58()}`);
   if (tokenProgram && !account.owner.equals(tokenProgram))
     throw new Error(`Unexpected token program for mint: ${mint.toBase58()}`);
-  if (account.data.length < 82 || account.data[45] !== 1)
-    throw new Error(`Invalid or uninitialized mint account: ${mint.toBase58()}`);
-  return account.data[44];
+  return validateSupportedMintData(account.data, account.owner, `Mint ${mint.toBase58()}`);
 }
