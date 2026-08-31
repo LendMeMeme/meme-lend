@@ -1,4 +1,5 @@
 use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
+use pinocchio_system::instructions::CreateAccount;
 use pinocchio_token::{instructions::TransferChecked, TokenInterface, TokenProgram};
 
 /// Checked transfer shared by SPL Token and Token-2022. The program address is
@@ -21,4 +22,15 @@ pub fn transfer_checked(
     let transfer =
         TransferChecked::<&AccountView>::new(from, mint, to, authority, amount, decimals);
     transfer.invoke_signed_with_unverified_program(signers, token_program.address())
+}
+
+pub fn create_program_account(
+    payer: &AccountView,
+    account: &AccountView,
+    owner: &pinocchio::Address,
+    space: usize,
+    signer: &Signer,
+) -> ProgramResult {
+    CreateAccount::with_minimum_balance(payer, account, space as u64, owner, None)?
+        .invoke_signed(core::slice::from_ref(signer))
 }

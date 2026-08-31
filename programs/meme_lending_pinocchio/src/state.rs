@@ -240,6 +240,7 @@ impl FirstLossReserve {
 pub struct Market {
     pub header: AccountHeader,
     pub authority_bump: u8,
+    pub vault_bumps: [u8; 3],
     pub creator: [u8; ADDRESS_BYTES],
     pub collateral_mint: [u8; ADDRESS_BYTES],
     pub loan_mint: [u8; ADDRESS_BYTES],
@@ -267,7 +268,7 @@ pub struct Market {
 }
 
 impl Market {
-    pub const LEN: usize = AccountHeader::LEN + 1 + ADDRESS_BYTES * 4 + 10 + 3 + 16 + 64 + 32;
+    pub const LEN: usize = AccountHeader::LEN + 4 + ADDRESS_BYTES * 4 + 10 + 3 + 16 + 64 + 32;
 
     pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
         if data.len() != Self::LEN {
@@ -277,6 +278,7 @@ impl Market {
         let value = Self {
             header: AccountHeader::decode(&mut decoder, AccountKind::Market)?,
             authority_bump: decoder.u8()?,
+            vault_bumps: *decoder.take()?,
             creator: *decoder.take()?,
             collateral_mint: *decoder.take()?,
             loan_mint: *decoder.take()?,
@@ -317,6 +319,7 @@ impl Market {
         let mut encoder = Encoder::new(data);
         self.header.encode(&mut encoder)?;
         encoder.u8(self.authority_bump)?;
+        encoder.put(&self.vault_bumps)?;
         encoder.put(&self.creator)?;
         encoder.put(&self.collateral_mint)?;
         encoder.put(&self.loan_mint)?;
@@ -355,12 +358,12 @@ pub struct MarketMut<'a> {
 }
 
 impl<'a> MarketMut<'a> {
-    const FLAGS_OFFSET: usize = 143;
-    const TOTAL_SUPPLY_SHARES_OFFSET: usize = 161;
-    const TOTAL_BORROW_SHARES_OFFSET: usize = 177;
-    const BORROW_INDEX_OFFSET: usize = 193;
-    const TOTAL_DEBT_OFFSET: usize = 209;
-    const LAST_ACCRUAL_OFFSET: usize = 249;
+    const FLAGS_OFFSET: usize = 146;
+    const TOTAL_SUPPLY_SHARES_OFFSET: usize = 164;
+    const TOTAL_BORROW_SHARES_OFFSET: usize = 180;
+    const BORROW_INDEX_OFFSET: usize = 196;
+    const TOTAL_DEBT_OFFSET: usize = 212;
+    const LAST_ACCRUAL_OFFSET: usize = 252;
 
     pub fn new(data: &'a mut [u8]) -> Result<Self, ProgramError> {
         if data.len() != Market::LEN
@@ -621,10 +624,11 @@ mod tests {
     }
 
     #[test]
-    fn market_round_trips_in_257_bytes() {
+    fn market_round_trips_in_260_bytes() {
         let market = Market {
             header: header(AccountKind::Market),
             authority_bump: 253,
+            vault_bumps: [250, 251, 252],
             creator: [1; 32],
             collateral_mint: [2; 32],
             loan_mint: [3; 32],
@@ -652,7 +656,7 @@ mod tests {
         market.encode(&mut bytes).unwrap();
         assert_eq!(Market::decode(&bytes).unwrap(), market);
         assert!(Market::decode(&bytes).unwrap().borrowing_paused());
-        assert_eq!(Market::LEN, 257);
+        assert_eq!(Market::LEN, 260);
     }
 
     #[test]
@@ -661,6 +665,7 @@ mod tests {
         let market = Market {
             header: header(AccountKind::Market),
             authority_bump: 1,
+            vault_bumps: [2, 3, 4],
             creator: [0; 32],
             collateral_mint: [0; 32],
             loan_mint: [0; 32],
@@ -712,6 +717,7 @@ mod tests {
         let market = Market {
             header: header(AccountKind::Market),
             authority_bump: 1,
+            vault_bumps: [2, 3, 4],
             creator: [0; 32],
             collateral_mint: [0; 32],
             loan_mint: [0; 32],

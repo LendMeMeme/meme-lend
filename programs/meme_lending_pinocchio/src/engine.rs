@@ -154,6 +154,7 @@ mod tests {
                 bump: 1,
             },
             authority_bump: 2,
+            vault_bumps: [3, 4, 5],
             creator: [1; 32],
             collateral_mint: [2; 32],
             loan_mint: [3; 32],

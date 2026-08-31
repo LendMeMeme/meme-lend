@@ -1,4 +1,5 @@
 use pinocchio::{error::ProgramError, AccountView, Address};
+use pinocchio_token::{TokenInterface, TokenProgram};
 
 #[inline(always)]
 pub fn signer(account: &AccountView) -> Result<(), ProgramError> {
@@ -50,4 +51,38 @@ pub fn distinct_writable(accounts: &[AccountView]) -> Result<(), ProgramError> {
         left += 1;
     }
     Ok(())
+}
+
+pub struct TokenAccountBase {
+    pub mint: [u8; 32],
+    pub authority: [u8; 32],
+    pub amount: u64,
+}
+
+pub fn token_account(
+    account: &AccountView,
+    token_program: &AccountView,
+) -> Result<TokenAccountBase, ProgramError> {
+    if !token_program.executable() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    TokenProgram::verify(token_program.address())?;
+    owner(account, token_program.address())?;
+    let data = account.try_borrow()?;
+    if data.len() < 165 || data[108] != 1 {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(TokenAccountBase {
+        mint: data[0..32]
+            .try_into()
+            .map_err(|_| ProgramError::InvalidAccountData)?,
+        authority: data[32..64]
+            .try_into()
+            .map_err(|_| ProgramError::InvalidAccountData)?,
+        amount: u64::from_le_bytes(
+            data[64..72]
+                .try_into()
+                .map_err(|_| ProgramError::InvalidAccountData)?,
+        ),
+    })
 }

@@ -4,10 +4,16 @@ pub mod codec;
 pub mod constants;
 pub mod cpi;
 pub mod engine;
+pub mod handlers;
 pub mod instruction;
 pub mod math;
+pub mod pda;
 pub mod state;
 pub mod validation;
+
+solana_address::declare_id!("3rkRSEiVbummMYVx91shz5obS1pQQGEkTpGZoHBUx4an");
+pub const INITIAL_AUTHORITY: pinocchio::Address =
+    pinocchio::Address::from_str_const("52sZ6c8HUZh3H54Xr674xKKyJfqBPSpUnQfNwwRrffHA");
 
 #[cfg(feature = "bpf-entrypoint")]
 mod entrypoint {
@@ -29,7 +35,20 @@ mod entrypoint {
     ) -> ProgramResult {
         // Dispatch is deliberately strict. Each handler is added only after its
         // account validation has differential tests against the Anchor program.
-        let _instruction = LendingInstruction::decode(instruction_data)?;
-        Err(pinocchio::error::ProgramError::InvalidInstructionData)
+        match LendingInstruction::decode(instruction_data)? {
+            LendingInstruction::InitializeProtocol => {
+                crate::handlers::initialize_protocol(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::SetProtocolPause => {
+                crate::handlers::set_protocol_pause(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::PauseMarket => {
+                crate::handlers::pause_market(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::AccrueInterest => {
+                crate::handlers::accrue_interest(_program_id, _accounts, instruction_data)
+            }
+            _ => Err(pinocchio::error::ProgramError::InvalidInstructionData),
+        }
     }
 }

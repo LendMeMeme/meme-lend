@@ -946,6 +946,7 @@ dependencies = [
  "pinocchio-system",
  "pinocchio-token",
  "pinocchio-token-2022",
+ "solana-address",
  "solana-security-txt",
 ]
 
@@ -1426,6 +1427,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2-const-stable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f179d4e11094a893b82fff208f74d448a7512f99f5a0acbd5c679b705f83ed9"
+
+[[package]]
 name = "sha3"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1495,11 +1502,14 @@ version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01332a01c0a3098404d55a724c8d9a92aed4a50fe40a7dd0c7a51e29274c14de"
 dependencies = [
+ "curve25519-dalek",
  "five8 1.0.0",
  "five8_const 1.0.0",
+ "sha2-const-stable",
  "solana-define-syscall 5.2.0",
  "solana-nullable",
  "solana-program-error 3.0.1",
+ "solana-sha256-hasher 3.1.0",
 ]
 
 [[package]]
@@ -1558,7 +1568,7 @@ checksum = "a1a0801e25a1b31a14494fc80882a036be0ffd290efc4c2d640bfcca120a4672"
 dependencies = [
  "blake3",
  "solana-define-syscall 2.3.0",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-sanitize",
 ]
 
@@ -1630,6 +1640,12 @@ checksum = "2ae3e2abcf541c8122eafe9a625d4d194b4023c20adde1e251f94e056bb1aee2"
 
 [[package]]
 name = "solana-define-syscall"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57e5b1c0bc1d4a4d10c88a4100499d954c09d3fecfae4912c1a074dff68b1738"
+
+[[package]]
+name = "solana-define-syscall"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf8209ece2bd9f1450e672858ffc0e5c8c786ff6916d2a862b126dd0128f380f"
@@ -1653,7 +1669,7 @@ checksum = "86b575d3dd323b9ea10bb6fe89bf6bf93e249b215ba8ed7f68f1a3633f384db7"
 dependencies = [
  "serde",
  "serde_derive",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-sdk-ids",
  "solana-sdk-macro",
  "solana-sysvar-id",
@@ -1682,7 +1698,7 @@ dependencies = [
  "serde_derive",
  "solana-address-lookup-table-interface",
  "solana-clock",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-instruction",
  "solana-keccak-hasher",
  "solana-message",
@@ -1742,6 +1758,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-hash"
+version = "4.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0df9b01495ed31100aca97a7f5862d5e19ab1636d60d1a9f02391408dd9dec84"
+
+[[package]]
 name = "solana-instruction"
 version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1797,7 +1819,7 @@ checksum = "c7aeb957fbd42a451b99235df4942d96db7ef678e8d5061ef34c9b34cae12f79"
 dependencies = [
  "sha3",
  "solana-define-syscall 2.3.0",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-sanitize",
 ]
 
@@ -1870,7 +1892,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "solana-bincode",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-instruction",
  "solana-pubkey",
  "solana-sanitize",
@@ -1905,9 +1927,9 @@ dependencies = [
  "serde",
  "serde_derive",
  "solana-fee-calculator",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-pubkey",
- "solana-sha256-hasher",
+ "solana-sha256-hasher 2.3.0",
 ]
 
 [[package]]
@@ -1957,7 +1979,7 @@ dependencies = [
  "solana-example-mocks",
  "solana-feature-gate-interface",
  "solana-fee-calculator",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-instruction",
  "solana-instructions-sysvar",
  "solana-keccak-hasher",
@@ -1982,7 +2004,7 @@ dependencies = [
  "solana-secp256k1-recover",
  "solana-serde-varint",
  "solana-serialize-utils",
- "solana-sha256-hasher",
+ "solana-sha256-hasher 2.3.0",
  "solana-short-vec",
  "solana-slot-hashes",
  "solana-slot-history",
@@ -2076,7 +2098,7 @@ dependencies = [
  "solana-decode-error",
  "solana-define-syscall 2.3.0",
  "solana-sanitize",
- "solana-sha256-hasher",
+ "solana-sha256-hasher 2.3.0",
  "wasm-bindgen",
 ]
 
@@ -2185,7 +2207,18 @@ checksum = "5aa3feb32c28765f6aa1ce8f3feac30936f16c5c3f7eb73d63a5b8f6f8ecdc44"
 dependencies = [
  "sha2 0.10.9",
  "solana-define-syscall 2.3.0",
- "solana-hash",
+ "solana-hash 2.3.0",
+]
+
+[[package]]
+name = "solana-sha256-hasher"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db7dc3011ea4c0334aaaa7e7128cb390ecf546b28d412e9bf2064680f57f588f"
+dependencies = [
+ "sha2 0.10.9",
+ "solana-define-syscall 4.0.1",
+ "solana-hash 4.6.0",
 ]
 
 [[package]]
@@ -2226,7 +2259,7 @@ checksum = "0c8691982114513763e88d04094c9caa0376b867a29577939011331134c301ce"
 dependencies = [
  "serde",
  "serde_derive",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-sdk-ids",
  "solana-sysvar-id",
 ]
@@ -2310,7 +2343,7 @@ dependencies = [
  "solana-epoch-rewards",
  "solana-epoch-schedule",
  "solana-fee-calculator",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-instruction",
  "solana-instructions-sysvar",
  "solana-last-restart-slot",
@@ -2361,7 +2394,7 @@ dependencies = [
  "serde_derive",
  "solana-clock",
  "solana-decode-error",
- "solana-hash",
+ "solana-hash 2.3.0",
  "solana-instruction",
  "solana-pubkey",
  "solana-rent",
@@ -2448,7 +2481,7 @@ checksum = "a7398da23554a31660f17718164e31d31900956054f54f52d5ec1be51cb4f4b3"
 dependencies = [
  "bytemuck",
  "solana-program-error 2.2.2",
- "solana-sha256-hasher",
+ "solana-sha256-hasher 2.3.0",
  "spl-discriminator-derive",
 ]
 
