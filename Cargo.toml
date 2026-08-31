@@ -2,6 +2,9 @@
 members = ["programs/meme_lending", "programs/meme_lending_pinocchio"]
 resolver = "2"
 
+[workspace.metadata.cli]
+solana = "4.2.1"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"

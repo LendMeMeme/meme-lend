@@ -1,11 +1,45 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
+  --ink: #f2f5f3;
+  --ink-soft: #b8c2bc;
+  --paper: #0b0d0c;
+  --surface: #121513;
+  --surface-translucent: rgba(18, 21, 19, 0.9);
+  --surface-soft: #181c19;
+  --field: #101311;
+  --line: #282e2a;
+  --line-strong: #39423c;
+  --muted: #89958e;
+  --green: #82d0a2;
+  --green-soft: #173326;
+  --yellow: #e6bd71;
+  --yellow-soft: #302719;
+  --coral: #ef8e80;
+  --focus: rgba(130, 208, 162, 0.24);
+  --nav-hover: rgba(255, 255, 255, 0.055);
+  --button: rgba(24, 28, 25, 0.92);
+  --button-hover: #56645b;
+  --brand-ink: #0d1a12;
+  --risk-border: #57482d;
+  --risk-text: #e6c98f;
+  --risk-strong: #f0d7a5;
+  --badge-border: #315b42;
+  --placeholder: #68736c;
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  --page-glow: rgba(52, 110, 75, 0.2);
+  --page-top: #0e110f;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
   --ink: #17211b;
   --ink-soft: #405047;
   --paper: #f7f7f2;
   --surface: #ffffff;
+  --surface-translucent: rgba(255, 255, 255, 0.88);
   --surface-soft: #f0f3ed;
+  --field: #fcfdfb;
   --line: #dce3da;
   --line-strong: #c8d2c6;
   --muted: #708077;
@@ -14,7 +48,19 @@
   --yellow: #9a6b20;
   --yellow-soft: #fbf2dc;
   --coral: #b64d3d;
+  --focus: rgba(47, 107, 79, 0.2);
+  --nav-hover: rgba(255, 255, 255, 0.72);
+  --button: rgba(255, 255, 255, 0.8);
+  --button-hover: #a8b8ab;
+  --brand-ink: #eff8f1;
+  --risk-border: #eadbb8;
+  --risk-text: #755623;
+  --risk-strong: #624615;
+  --badge-border: #c7dfcf;
+  --placeholder: #9aa69f;
   --shadow: 0 16px 42px rgba(34, 52, 41, 0.07);
+  --page-glow: rgba(203, 229, 210, 0.55);
+  --page-top: #fafaf6;
 }
 * {
   box-sizing: border-box;
@@ -28,8 +74,8 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 8% 2%, rgba(203, 229, 210, 0.55), transparent 29rem),
-    linear-gradient(180deg, #fafaf6 0, var(--paper) 34rem);
+    radial-gradient(circle at 8% 2%, var(--page-glow), transparent 29rem),
+    linear-gradient(180deg, var(--page-top) 0, var(--paper) 34rem);
   font-family:
     Inter,
     ui-sans-serif,
@@ -53,7 +99,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgba(47, 107, 79, 0.2);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 .shell {
@@ -66,7 +112,7 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 28px;
-  border-bottom: 1px solid rgba(200, 210, 198, 0.72);
+  border-bottom: 1px solid var(--line);
 }
 .brand {
   display: flex;
@@ -82,10 +128,16 @@ select:focus-visible {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: #eff8f1;
-  font-size: 14px;
-  box-shadow: 0 4px 12px rgba(23, 33, 27, 0.16);
+  background: transparent;
+}
+.brand-mark img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+:root[data-theme="light"] .brand-mark img {
+  filter: none;
 }
 .nav-links {
   display: flex;
@@ -102,11 +154,22 @@ select:focus-visible {
     color 150ms ease;
 }
 .nav-links a:hover {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--nav-hover);
   color: var(--ink);
 }
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-toggle {
+  width: 44px;
+  padding: 0 !important;
+  flex: 0 0 44px;
+}
 .button,
-.wallet-adapter-button {
+.wallet-adapter-button,
+.theme-toggle {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
@@ -115,7 +178,7 @@ select:focus-visible {
   padding: 0 17px !important;
   border-radius: 12px !important;
   border: 1px solid var(--line-strong) !important;
-  background: rgba(255, 255, 255, 0.8) !important;
+  background: var(--button) !important;
   color: var(--ink) !important;
   font-weight: 650 !important;
   font-size: 14px !important;
@@ -127,15 +190,16 @@ select:focus-visible {
     box-shadow 150ms ease;
 }
 .button:hover,
-.wallet-adapter-button:hover {
-  border-color: #a8b8ab !important;
-  box-shadow: 0 5px 16px rgba(36, 57, 43, 0.08) !important;
+.wallet-adapter-button:hover,
+.theme-toggle:hover {
+  border-color: var(--button-hover) !important;
+  box-shadow: var(--shadow) !important;
   transform: translateY(-1px);
 }
 .button.primary {
   background: var(--ink) !important;
   border-color: var(--ink) !important;
-  color: #f7fbf8 !important;
+  color: var(--paper) !important;
 }
 .button:disabled {
   cursor: not-allowed;
@@ -178,15 +242,15 @@ h1 {
 }
 .risk-note {
   padding: 22px;
-  border: 1px solid #eadbb8;
+  border: 1px solid var(--risk-border);
   border-radius: 18px;
-  background: rgba(255, 249, 232, 0.8);
-  color: #755623;
+  background: var(--yellow-soft);
+  color: var(--risk-text);
   font-size: 14px;
   line-height: 1.6;
 }
 .risk-note strong {
-  color: #624615;
+  color: var(--risk-strong);
 }
 .section {
   padding: 38px 0 82px;
@@ -210,7 +274,7 @@ h1 {
 .card {
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--surface-translucent);
   box-shadow: var(--shadow);
 }
 .empty {
@@ -343,14 +407,14 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 tbody tr:hover {
-  background: #fafbf8;
+  background: var(--surface-soft);
 }
 .badge {
   display: inline-flex;
   padding: 5px 9px;
   border-radius: 999px;
   background: var(--green-soft);
-  border: 1px solid #c7dfcf;
+  border: 1px solid var(--badge-border);
   color: var(--green);
   font-size: 11px;
   font-weight: 750;
@@ -358,7 +422,7 @@ tbody tr:hover {
 .badge.risk {
   color: var(--yellow);
   background: var(--yellow-soft);
-  border-color: #ead7ad;
+  border-color: var(--risk-border);
 }
 .definition {
   display: grid;
@@ -391,7 +455,7 @@ tbody tr:hover {
   min-height: 48px;
   border: 1px solid var(--line-strong);
   border-radius: 11px;
-  background: #fcfdfb;
+  background: var(--field);
   color: var(--ink);
   padding: 0 14px;
   outline: none;
@@ -400,12 +464,12 @@ tbody tr:hover {
     box-shadow 150ms ease;
 }
 .field input::placeholder {
-  color: #9aa69f;
+  color: var(--placeholder);
 }
 .field input:focus,
 .field select:focus {
   border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(47, 107, 79, 0.1);
+  box-shadow: 0 0 0 3px var(--focus);
 }
 .help {
   color: var(--muted);
@@ -413,11 +477,11 @@ tbody tr:hover {
   line-height: 1.5;
 }
 .warning {
-  border: 1px solid #eadab6;
+  border: 1px solid var(--risk-border);
   border-radius: 11px;
   padding: 14px 15px;
   background: var(--yellow-soft);
-  color: #755623;
+  color: var(--risk-text);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -509,7 +573,11 @@ tbody tr:hover {
     font-size: 0;
   }
   .brand-mark {
-    font-size: 14px;
+    width: 30px;
+    height: 30px;
+  }
+  .wallet-adapter-button {
+    padding-inline: 12px !important;
   }
   h1 {
     font-size: 48px;
