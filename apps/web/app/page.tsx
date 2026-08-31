@@ -1,16 +1,18 @@
 import Link from "next/link";
-import { ArrowRight, Orbit, ShieldAlert, Waves } from "lucide-react";
+import { ArrowRight, Check, CircleDollarSign, Layers3, LockKeyhole, Orbit } from "lucide-react";
 
 export default function HomePage() {
   return (
     <main className="shell">
       <section className="hero">
-        <div>
-          <div className="eyebrow">Isolated lending on Solana</div>
-          <h1>Put your memecoin to work.</h1>
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <span className="status-dot" /> Live on Solana mainnet
+          </div>
+          <h1>Liquidity, without shared risk.</h1>
           <p className="lede">
-            Lend USDC or borrow against memecoins in isolated markets with clear, immutable risk
-            terms.
+            Lend USDC or borrow against memecoins through fully isolated markets with transparent,
+            immutable risk terms.
           </p>
           <div className="actions">
             <Link className="button primary" href="/markets">
@@ -20,19 +22,63 @@ export default function HomePage() {
               Create market
             </Link>
           </div>
+          <div className="trust-row" aria-label="Protocol properties">
+            <span>
+              <Check size={14} /> Isolated markets
+            </span>
+            <span>
+              <Check size={14} /> Immutable parameters
+            </span>
+            <span>
+              <Check size={14} /> On-chain settlement
+            </span>
+          </div>
         </div>
-        <aside className="risk-note">
-          <strong>Take a moment to check the risk.</strong>
-          <br />
-          Anyone can create a market. Review its oracle, liquidity, borrowing limit, and reserve
-          before supplying.
+        <aside className="protocol-card">
+          <div className="protocol-card-head">
+            <span>Protocol architecture</span>
+            <span className="badge">Mainnet</span>
+          </div>
+          <div className="architecture-row">
+            <span className="architecture-icon">
+              <CircleDollarSign size={19} />
+            </span>
+            <div>
+              <strong>USDC liquidity</strong>
+              <small>Supplied per market</small>
+            </div>
+          </div>
+          <div className="architecture-line" />
+          <div className="architecture-row">
+            <span className="architecture-icon">
+              <Layers3 size={19} />
+            </span>
+            <div>
+              <strong>Isolated collateral</strong>
+              <small>No cross-market contagion</small>
+            </div>
+          </div>
+          <div className="architecture-line" />
+          <div className="architecture-row">
+            <span className="architecture-icon">
+              <LockKeyhole size={19} />
+            </span>
+            <div>
+              <strong>Fixed risk terms</strong>
+              <small>Immutable after creation</small>
+            </div>
+          </div>
+          <div className="program-strip">
+            <span>Program</span>
+            <code>FvnW…jFaX</code>
+          </div>
         </aside>
       </section>
       <section className="section">
         <div className="section-head">
           <div>
             <div className="eyebrow">Live markets</div>
-            <h2>Choose the risk yourself.</h2>
+            <h2>Choose risk on your terms.</h2>
           </div>
           <Link className="muted" href="/markets">
             View all markets →
@@ -74,16 +120,15 @@ export default function HomePage() {
         </div>
       </section>
       <section className="section">
-        <div className="card assurance-card">
-          <ShieldAlert color="var(--yellow)" />
+        <div className="risk-note">
+          <div className="risk-label">Risk notice</div>
           <div>
-            <strong>First-loss reserves reduce risk; they do not guarantee repayment.</strong>
-            <div className="muted assurance-copy">
-              Price gaps, oracle failures, and missing liquidation demand can still create lender
-              losses.
-            </div>
+            <strong>Every market has its own risk profile.</strong>
+            <p>
+              Review the oracle, liquidity, borrowing limit, and first-loss reserve before
+              supplying. Reserves reduce risk; they do not guarantee repayment.
+            </p>
           </div>
-          <Waves style={{ marginLeft: "auto" }} color="var(--green)" />
         </div>
       </section>
     </main>

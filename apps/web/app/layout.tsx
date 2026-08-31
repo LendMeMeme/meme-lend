@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#0b0d0c" },
-    { media: "(prefers-color-scheme: light)", color: "#f7f7f2" },
+    { media: "(prefers-color-scheme: light)", color: "#f8faf8" },
   ],
-  colorScheme: "dark light",
+  colorScheme: "light dark",
 };
 const links = [
   ["Markets", "/markets"],
@@ -26,34 +26,36 @@ const links = [
 ];
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{var t=localStorage.getItem("meme-lend-theme");if(t==="light")document.documentElement.dataset.theme="light"}catch(e){}',
+              'try{var t=localStorage.getItem("meme-lend-theme");if(t==="dark")document.documentElement.dataset.theme="dark"}catch(e){}',
           }}
         />
       </head>
       <body>
         <WalletContext>
-          <header className="shell nav">
-            <Link className="brand" href="/">
-              <span className="brand-mark">
-                <Image src="/lend-logo.png" alt="" width={30} height={30} priority />
-              </span>
-              Meme Lend
-            </Link>
-            <nav className="nav-links" aria-label="Primary">
-              {links.map(([label, href]) => (
-                <Link href={href} key={href}>
-                  {label}
-                </Link>
-              ))}
-            </nav>
-            <div className="nav-actions">
-              <ThemeToggle />
-              <WalletControl />
+          <header className="site-header">
+            <div className="shell nav">
+              <Link className="brand" href="/">
+                <span className="brand-mark">
+                  <Image src="/lend-logo.png" alt="" width={32} height={32} priority />
+                </span>
+                <span>Meme Lend</span>
+              </Link>
+              <nav className="nav-links" aria-label="Primary">
+                {links.map(([label, href]) => (
+                  <Link href={href} key={href}>
+                    {label}
+                  </Link>
+                ))}
+              </nav>
+              <div className="nav-actions">
+                <ThemeToggle />
+                <WalletControl />
+              </div>
             </div>
           </header>
           {children}
