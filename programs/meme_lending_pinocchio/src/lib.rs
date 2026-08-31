@@ -51,8 +51,20 @@ mod entrypoint {
             LendingInstruction::SupplyUsdc => {
                 crate::handlers::supply_usdc(_program_id, _accounts, instruction_data)
             }
+            LendingInstruction::WithdrawUsdc => {
+                crate::handlers::withdraw_usdc(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::SubmitOracleObservation => {
+                crate::handlers::submit_oracle_observation(_program_id, _accounts, instruction_data)
+            }
             LendingInstruction::DepositCollateral => {
                 crate::handlers::deposit_collateral(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::WithdrawCollateral => {
+                crate::handlers::withdraw_collateral(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::BorrowUsdc => {
+                crate::handlers::borrow_usdc(_program_id, _accounts, instruction_data)
             }
             LendingInstruction::RepayUsdc => {
                 crate::handlers::repay_usdc(_program_id, _accounts, instruction_data)

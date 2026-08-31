@@ -10,12 +10,13 @@ use crate::{
     cpi::create_program_account,
     pda::{
         self, ASSOCIATED_TOKEN_PROGRAM, BORROWER_POSITION_SEED, GLOBAL_CONFIG_SEED,
-        LENDER_POSITION_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED,
+        LENDER_POSITION_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, ORACLE_CONFIG_SEED,
+        ORACLE_OBSERVATION_SEED,
     },
     state::{
         AccountHeader, AccountKind, BorrowerPosition, GlobalConfig, LenderPosition, Market,
-        GLOBAL_FLAG_PAUSED, MARKET_FLAG_BORROWING_PAUSED, MARKET_FLAG_REWARDS_ENABLED,
-        STATE_VERSION,
+        OracleConfiguration, OracleObservation, GLOBAL_FLAG_PAUSED, MARKET_FLAG_BORROWING_PAUSED,
+        MARKET_FLAG_REWARDS_ENABLED, STATE_VERSION,
     },
     validation, INITIAL_AUTHORITY,
 };
@@ -71,6 +72,49 @@ fn verify_ata_vault(
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
+}
+
+fn decode_global(
+    program_id: &Address,
+    account: &AccountView,
+) -> Result<GlobalConfig, ProgramError> {
+    validation::owner(account, program_id)?;
+    let config = GlobalConfig::decode(&account.try_borrow()?)?;
+    pda::verify(
+        account.address(),
+        &[GLOBAL_CONFIG_SEED],
+        config.header.bump,
+        program_id,
+    )?;
+    Ok(config)
+}
+
+fn decode_oracle(
+    program_id: &Address,
+    market_account: &AccountView,
+    config_account: &AccountView,
+    observation_account: &AccountView,
+) -> Result<(OracleConfiguration, OracleObservation), ProgramError> {
+    validation::owner(config_account, program_id)?;
+    validation::owner(observation_account, program_id)?;
+    let config = OracleConfiguration::decode(&config_account.try_borrow()?)?;
+    let observation = OracleObservation::decode(&observation_account.try_borrow()?)?;
+    pda::verify(
+        config_account.address(),
+        &[ORACLE_CONFIG_SEED, market_account.address().as_ref()],
+        config.header.bump,
+        program_id,
+    )?;
+    pda::verify(
+        observation_account.address(),
+        &[ORACLE_OBSERVATION_SEED, market_account.address().as_ref()],
+        observation.header.bump,
+        program_id,
+    )?;
+    if config.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok((config, observation))
 }
 
 /// Accounts: authority/payer, global config PDA.
@@ -602,4 +646,462 @@ pub fn repay_usdc(
         .ok_or(ProgramError::ArithmeticOverflow)?;
     position.encode(&mut position_account.try_borrow_mut()?)?;
     market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn withdraw_usdc(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [lender, market_account, position_account, lender_tokens, liquidity_vault, loan_mint, market_authority, token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(lender)?;
+    for account in [
+        &*market_account,
+        &*position_account,
+        &*lender_tokens,
+        &*liquidity_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let shares = decoder.u128()?;
+    decoder.finish()?;
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0
+        || loan_mint.address().as_array() != &market.loan_mint
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    validation::owner(position_account, program_id)?;
+    let mut position = LenderPosition::decode(&position_account.try_borrow()?)?;
+    pda::verify(
+        position_account.address(),
+        &[
+            LENDER_POSITION_SEED,
+            market_account.address().as_ref(),
+            lender.address().as_ref(),
+        ],
+        position.header.bump,
+        program_id,
+    )?;
+    if position.owner != *lender.address().as_array()
+        || position.market != *market_account.address().as_array()
+        || position.supply_shares < shares
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let user_tokens = validation::token_account(lender_tokens, token_program)?;
+    if user_tokens.mint != market.loan_mint || user_tokens.authority != *lender.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let decimals = validation::mint_decimals(loan_mint, token_program)?;
+    let cash = validation::token_account(liquidity_vault, token_program)?.amount;
+    crate::engine::accrue_market(&mut market, cash, Clock::get()?.unix_timestamp)?;
+    let assets = crate::math::shares_to_assets(
+        shares,
+        crate::engine::net_market_assets(&market, cash)?,
+        market.total_supply_shares,
+    )?;
+    if cash < assets {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    position.supply_shares = position
+        .supply_shares
+        .checked_sub(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_supply_shares = market
+        .total_supply_shares
+        .checked_sub(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let bump = [market.authority_bump];
+    let signer_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &bump
+    );
+    crate::cpi::transfer_checked(
+        token_program,
+        liquidity_vault,
+        loan_mint,
+        lender_tokens,
+        market_authority,
+        assets,
+        decimals,
+        core::slice::from_ref(&Signer::from(&signer_seeds)),
+    )?;
+    position.encode(&mut position_account.try_borrow_mut()?)?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn borrow_usdc(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [borrower, global_account, market_account, position_account, borrower_tokens, liquidity_vault, loan_mint, collateral_mint, market_authority, loan_token_program, collateral_token_program, oracle_config_account, oracle_observation_account] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(borrower)?;
+    for account in [
+        &*market_account,
+        &*position_account,
+        &*borrower_tokens,
+        &*liquidity_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    decoder.finish()?;
+    if amount == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let global = decode_global(program_id, global_account)?;
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if global.paused() || market.borrowing_paused() || market.loan_mint != global.approved_loan_mint
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    if loan_mint.address().as_array() != &market.loan_mint
+        || collateral_mint.address().as_array() != &market.collateral_mint
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        loan_token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    let (oracle_config, observation) = decode_oracle(
+        program_id,
+        market_account,
+        oracle_config_account,
+        oracle_observation_account,
+    )?;
+    let now = Clock::get()?.unix_timestamp;
+    crate::engine::validate_oracle(&oracle_config, &observation, now)?;
+    validation::owner(position_account, program_id)?;
+    let mut position = BorrowerPosition::decode(&position_account.try_borrow()?)?;
+    pda::verify(
+        position_account.address(),
+        &[
+            BORROWER_POSITION_SEED,
+            market_account.address().as_ref(),
+            borrower.address().as_ref(),
+        ],
+        position.header.bump,
+        program_id,
+    )?;
+    if position.market != *market_account.address().as_array()
+        || position.owner != *borrower.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let borrower_token_state = validation::token_account(borrower_tokens, loan_token_program)?;
+    if borrower_token_state.mint != market.loan_mint
+        || borrower_token_state.authority != *borrower.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let loan_decimals = validation::mint_decimals(loan_mint, loan_token_program)?;
+    let collateral_decimals = validation::mint_decimals(collateral_mint, collateral_token_program)?;
+    let cash = validation::token_account(liquidity_vault, loan_token_program)?.amount;
+    if amount > cash {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    crate::engine::accrue_market(&mut market, cash, now)?;
+    let current_debt = if position.borrow_shares == 0 {
+        0
+    } else {
+        crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?
+    };
+    let resulting_debt = current_debt
+        .checked_add(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    let total_debt = market
+        .total_debt
+        .checked_add(u128::from(amount))
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if total_debt > u128::from(market.market_borrow_cap)
+        || resulting_debt > market.wallet_borrow_cap
+        || resulting_debt > observation.max_recoverable_usdc
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    crate::engine::require_healthy(
+        position.collateral_amount,
+        collateral_decimals,
+        resulting_debt,
+        observation.price,
+        oracle_config.price_decimals,
+        market.lltv_bps,
+    )?;
+    let shares = crate::math::debt_to_shares_ceil(amount, market.borrow_index)?;
+    position.borrow_shares = position
+        .borrow_shares
+        .checked_add(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_borrow_shares = market
+        .total_borrow_shares
+        .checked_add(shares)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_debt = total_debt;
+    let bump = [market.authority_bump];
+    let signer_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &bump
+    );
+    crate::cpi::transfer_checked(
+        loan_token_program,
+        liquidity_vault,
+        loan_mint,
+        borrower_tokens,
+        market_authority,
+        amount,
+        loan_decimals,
+        core::slice::from_ref(&Signer::from(&signer_seeds)),
+    )?;
+    position.encode(&mut position_account.try_borrow_mut()?)?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn withdraw_collateral(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [borrower, market_account, position_account, borrower_tokens, collateral_vault, collateral_mint, market_authority, collateral_token_program, oracle_config_account, oracle_observation_account, liquidity_vault, loan_mint, loan_token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(borrower)?;
+    for account in [
+        &*market_account,
+        &*position_account,
+        &*borrower_tokens,
+        &*collateral_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    decoder.finish()?;
+    if amount == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if collateral_mint.address().as_array() != &market.collateral_mint
+        || loan_mint.address().as_array() != &market.loan_mint
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    verify_ata_vault(
+        collateral_vault,
+        market_authority,
+        collateral_token_program,
+        collateral_mint,
+        market.vault_bumps[1],
+    )?;
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        loan_token_program,
+        loan_mint,
+        market.vault_bumps[0],
+    )?;
+    let (oracle_config, observation) = decode_oracle(
+        program_id,
+        market_account,
+        oracle_config_account,
+        oracle_observation_account,
+    )?;
+    let now = Clock::get()?.unix_timestamp;
+    crate::engine::validate_oracle(&oracle_config, &observation, now)?;
+    validation::owner(position_account, program_id)?;
+    let mut position = BorrowerPosition::decode(&position_account.try_borrow()?)?;
+    pda::verify(
+        position_account.address(),
+        &[
+            BORROWER_POSITION_SEED,
+            market_account.address().as_ref(),
+            borrower.address().as_ref(),
+        ],
+        position.header.bump,
+        program_id,
+    )?;
+    if position.market != *market_account.address().as_array()
+        || position.owner != *borrower.address().as_array()
+        || position.collateral_amount < amount
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let user_tokens = validation::token_account(borrower_tokens, collateral_token_program)?;
+    if user_tokens.mint != market.collateral_mint
+        || user_tokens.authority != *borrower.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let collateral_decimals = validation::mint_decimals(collateral_mint, collateral_token_program)?;
+    let cash = validation::token_account(liquidity_vault, loan_token_program)?.amount;
+    crate::engine::accrue_market(&mut market, cash, now)?;
+    let debt = if position.borrow_shares == 0 {
+        0
+    } else {
+        crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?
+    };
+    let remaining = position
+        .collateral_amount
+        .checked_sub(amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    crate::engine::require_healthy(
+        remaining,
+        collateral_decimals,
+        debt,
+        observation.price,
+        oracle_config.price_decimals,
+        market.lltv_bps,
+    )?;
+    let bump = [market.authority_bump];
+    let signer_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &bump
+    );
+    crate::cpi::transfer_checked(
+        collateral_token_program,
+        collateral_vault,
+        collateral_mint,
+        borrower_tokens,
+        market_authority,
+        amount,
+        collateral_decimals,
+        core::slice::from_ref(&Signer::from(&signer_seeds)),
+    )?;
+    position.collateral_amount = remaining;
+    position.encode(&mut position_account.try_borrow_mut()?)?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+pub fn submit_oracle_observation(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    let [publisher, market_account, config_account, observation_account] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(publisher)?;
+    validation::writable(publisher)?;
+    validation::writable(observation_account)?;
+    validation::owner(market_account, program_id)?;
+    validation::owner(config_account, program_id)?;
+    let config = OracleConfiguration::decode(&config_account.try_borrow()?)?;
+    pda::verify(
+        config_account.address(),
+        &[ORACLE_CONFIG_SEED, market_account.address().as_ref()],
+        config.header.bump,
+        program_id,
+    )?;
+    if config.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let publisher_bytes = *publisher.address().as_array();
+    if !config.sources[..usize::from(config.source_count)].contains(&publisher_bytes) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let mut decoder = payload(data)?;
+    let price = decoder.u128()?;
+    let confidence_bps = decoder.u16()?;
+    let deviation_bps = decoder.u16()?;
+    let max_recoverable_usdc = decoder.u64()?;
+    let published_at = decoder.i64()?;
+    let sequence = decoder.u64()?;
+    let bump = decoder.u8()?;
+    decoder.finish()?;
+    let now = Clock::get()?.unix_timestamp;
+    if price == 0
+        || max_recoverable_usdc == 0
+        || published_at > now
+        || confidence_bps > config.max_confidence_bps
+        || deviation_bps > config.max_deviation_bps
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let header = if observation_account.is_data_empty() {
+        if publisher_bytes != config.sources[0] {
+            return Err(ProgramError::InvalidArgument);
+        }
+        let seeds = [ORACLE_OBSERVATION_SEED, market_account.address().as_ref()];
+        pda::verify_canonical(observation_account.address(), &seeds, bump, program_id)?;
+        let bump_seed = [bump];
+        let signer_seeds = pinocchio::instruction::seeds!(
+            ORACLE_OBSERVATION_SEED,
+            market_account.address().as_ref(),
+            &bump_seed
+        );
+        create_program_account(
+            publisher,
+            observation_account,
+            program_id,
+            OracleObservation::LEN,
+            &Signer::from(&signer_seeds),
+        )?;
+        AccountHeader {
+            version: STATE_VERSION,
+            kind: AccountKind::OracleObservation,
+            bump,
+        }
+    } else {
+        validation::owner(observation_account, program_id)?;
+        let previous = OracleObservation::decode(&observation_account.try_borrow()?)?;
+        pda::verify(
+            observation_account.address(),
+            &[ORACLE_OBSERVATION_SEED, market_account.address().as_ref()],
+            previous.header.bump,
+            program_id,
+        )?;
+        if previous.market != *market_account.address().as_array()
+            || sequence <= previous.sequence
+            || published_at < previous.published_at
+        {
+            return Err(ProgramError::InvalidArgument);
+        }
+        previous.header
+    };
+    OracleObservation {
+        header,
+        market: *market_account.address().as_array(),
+        publisher: publisher_bytes,
+        price,
+        confidence_bps,
+        deviation_bps,
+        max_recoverable_usdc,
+        published_at,
+        sequence,
+    }
+    .encode(&mut observation_account.try_borrow_mut()?)
 }
