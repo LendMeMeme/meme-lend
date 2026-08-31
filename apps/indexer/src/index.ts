@@ -128,15 +128,39 @@ for (;;) {
   before = page.at(-1)?.signature;
 }
 
+// MongoDB is a recoverable projection, not the source of truth. Reconcile every
+// on-chain market at startup so a websocket outage or a checkpoint advancing past
+// an unprocessed signature cannot permanently hide a valid market.
+const [marketAccounts, reconciliationSlot] = await Promise.all([
+  connection.getProgramAccounts(programId, {
+    commitment: "finalized",
+    filters: [{ dataSize: 260 }],
+  }),
+  connection.getSlot("finalized"),
+]);
+for (const { pubkey } of marketAccounts) {
+  try {
+    await refreshMarket(connection, database, pubkey.toBase58(), reconciliationSlot);
+  } catch (error) {
+    console.error(`Failed to reconcile market ${pubkey.toBase58()}`, error);
+  }
+}
+
 const subscription = connection.onLogs(
   programId,
-  async (logs) => {
-    const [info] = await connection.getSignaturesForAddress(
-      programId,
-      { until: logs.signature, limit: 2 },
-      "finalized",
-    );
-    if (info?.signature === logs.signature) await ingestSignature(info);
+  async (logs, context) => {
+    try {
+      await ingestSignature({
+        signature: logs.signature,
+        slot: context.slot,
+        err: logs.err,
+        memo: null,
+        blockTime: await connection.getBlockTime(context.slot),
+        confirmationStatus: "finalized",
+      });
+    } catch (error) {
+      console.error(`Failed to ingest finalized signature ${logs.signature}`, error);
+    }
   },
   "finalized",
 );
