@@ -65,7 +65,7 @@ export async function buildCreateMarketTransaction(input: {
   initialLiquidity: string;
   owner: PublicKey;
   connection: Connection;
-}): Promise<{ transaction: Transaction; market: PublicKey }> {
+}): Promise<{ transaction: Transaction; liquidityTransaction: Transaction; market: PublicKey }> {
   const programId = id();
   const [globalConfig] = pinocchioPdas.globalConfig(programId);
   const global = decodePinocchioGlobalConfig(await data(input.connection, globalConfig));
@@ -99,6 +99,10 @@ export async function buildCreateMarketTransaction(input: {
   validateSupportedMintData(li.data, loanTokenProgram, "Approved USDC loan mint");
   const decimals = await getMintDecimals(input.connection, loanMint, loanTokenProgram);
   const initialLiquidity = parseUnits(input.initialLiquidity, decimals);
+  const marketBorrowCap = parseUnits(input.marketBorrowCap, decimals);
+  const walletBorrowCap = parseUnits(input.walletBorrowCap, decimals);
+  if (walletBorrowCap > marketBorrowCap)
+    throw new Error("Wallet borrow cap cannot exceed the total market borrow cap");
   const config = {
     lltvBps: input.lltvBps,
     liquidationBonusBps: 1000,
@@ -106,8 +110,8 @@ export async function buildCreateMarketTransaction(input: {
     creatorFeeBps: 1000,
     protocolFeeBps: 500,
     rateModelId: RATE_MODELS[input.rateModel].id,
-    marketBorrowCap: parseUnits(input.marketBorrowCap, decimals),
-    walletBorrowCap: parseUnits(input.walletBorrowCap, decimals),
+    marketBorrowCap,
+    walletBorrowCap,
     oracleMaxAgeSeconds: Math.min(global.maxOracleAgeSeconds, 60),
     oracleMaxConfidenceBps: 500,
     oracleMaxDeviationBps: 1000,
@@ -196,7 +200,7 @@ export async function buildCreateMarketTransaction(input: {
   if (ownerLoanBalance < initialLiquidity)
     throw new Error("Your wallet does not have enough USDC for the initial liquidity amount");
   const [lender, lenderBump] = pinocchioPdas.lenderPosition(market, input.owner, programId);
-  transaction.add(
+  const liquidityTransaction = new Transaction().add(
     pinocchioInstruction(
       PINOCCHIO_TAG.supplyUsdc,
       [
@@ -214,7 +218,7 @@ export async function buildCreateMarketTransaction(input: {
       programId,
     ),
   );
-  return { transaction, market };
+  return { transaction, liquidityTransaction, market };
 }
 
 export async function buildMarketTransaction(input: {

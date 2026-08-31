@@ -32,18 +32,17 @@ export function CreateMarketForm() {
   const [walletCap, setWalletCap] = useState("");
   const [initialLiquidity, setInitialLiquidity] = useState("");
   const [status, setStatus] = useState<
-    "idle" | "preparing" | "sending" | "confirmed" | "failed"
+    "idle" | "preparing" | "creating" | "seeding" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
-  const [fee, setFee] = useState<number | null>(null);
   const resetReview = () => {
     setStatus("idle");
     setMessage("");
-    setFee(null);
   };
   const launch = async () => {
     if (!wallet.publicKey) return;
     setStatus("preparing");
+    let createdMarket: string | null = null;
     try {
       const result = await buildCreateMarketTransaction({
         collateralMint,
@@ -65,10 +64,7 @@ export function CreateMarketForm() {
           `Simulation failed: ${JSON.stringify(simulation.value.err)}${logs ? `\n${logs}` : ""}`,
         );
       }
-      setFee(
-        (await connection.getFeeForMessage(result.transaction.compileMessage(), "confirmed")).value,
-      );
-      setStatus("sending");
+      setStatus("creating");
       const signature = await wallet.sendTransaction(result.transaction, connection, {
         preflightCommitment: "confirmed",
       });
@@ -78,12 +74,49 @@ export function CreateMarketForm() {
       );
       if (confirmation.value.err)
         throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      createdMarket = result.market.toBase58();
+
+      setStatus("seeding");
+      const liquidityBlockhash = await connection.getLatestBlockhash("confirmed");
+      result.liquidityTransaction.feePayer = wallet.publicKey;
+      result.liquidityTransaction.recentBlockhash = liquidityBlockhash.blockhash;
+      const liquiditySimulation = await connection.simulateTransaction(
+        result.liquidityTransaction,
+      );
+      if (liquiditySimulation.value.err) {
+        const logs = liquiditySimulation.value.logs?.slice(-6).join("\n");
+        throw new Error(
+          `Market was created, but liquidity preflight failed: ${JSON.stringify(liquiditySimulation.value.err)}${logs ? `\n${logs}` : ""}`,
+        );
+      }
+      const liquiditySignature = await wallet.sendTransaction(
+        result.liquidityTransaction,
+        connection,
+        { preflightCommitment: "confirmed" },
+      );
+      const liquidityConfirmation = await connection.confirmTransaction(
+        {
+          signature: liquiditySignature,
+          blockhash: liquidityBlockhash.blockhash,
+          lastValidBlockHeight: liquidityBlockhash.lastValidBlockHeight,
+        },
+        "confirmed",
+      );
+      if (liquidityConfirmation.value.err)
+        throw new Error(
+          `Market was created, but liquidity transaction failed: ${JSON.stringify(liquidityConfirmation.value.err)}`,
+        );
       setMessage(
-        `Market ${result.market.toBase58()} launched with ${initialLiquidity} USDC in transaction ${signature}`,
+        `Market ${result.market.toBase58()} launched in ${signature} and funded with ${initialLiquidity} USDC in ${liquiditySignature}`,
       );
       setStatus("confirmed");
     } catch (error) {
-      setMessage(await errorMessage(error, connection));
+      const detail = await errorMessage(error, connection);
+      setMessage(
+        createdMarket
+          ? `Market ${createdMarket} was created, but initial liquidity was not completed. ${detail}`
+          : detail,
+      );
       setStatus("failed");
     }
   };
@@ -170,6 +203,10 @@ export function CreateMarketForm() {
             resetReview();
           }}
         />
+        <span className="help">
+          Permanent ceiling on total outstanding USDC debt in this isolated market. This limits
+          aggregate exposure; it is not the amount of liquidity supplied.
+        </span>
       </div>
       <div className="field">
         <label htmlFor="wallet-cap">Wallet borrow cap (USDC)</label>
@@ -182,6 +219,10 @@ export function CreateMarketForm() {
             resetReview();
           }}
         />
+        <span className="help">
+          Permanent maximum USDC debt for one wallet. It must not exceed the market cap and does not
+          prevent one person from using multiple wallets.
+        </span>
       </div>
       <div className="field">
         <label htmlFor="initial-liquidity">Initial USDC liquidity</label>
@@ -196,15 +237,11 @@ export function CreateMarketForm() {
           placeholder="Amount supplied when the market launches"
         />
         <span className="help">
-          Market creation and the first USDC supply are atomic: either both succeed or neither does.
+          Launch uses two wallet approvals so Phantom can clearly preview market creation and the
+          USDC supply separately. If the second approval is declined, the market exists without the
+          initial liquidity.
         </span>
       </div>
-      <dl>
-        <div className="definition">
-          <dt>Network fee</dt>
-          <dd>{fee == null ? "Calculated during simulation" : `${fee} lamports`}</dd>
-        </div>
-      </dl>
       {message ? (
         <p role="status" className={status === "failed" ? "unavailable" : "help"}>
           {message}
@@ -216,7 +253,8 @@ export function CreateMarketForm() {
         disabled={
           !wallet.connected ||
           status === "preparing" ||
-          status === "sending" ||
+          status === "creating" ||
+          status === "seeding" ||
           status === "confirmed"
         }
         onClick={launch}
@@ -225,8 +263,10 @@ export function CreateMarketForm() {
           ? "Connect wallet to continue"
           : status === "preparing"
             ? "Checking transaction…"
-            : status === "sending"
-              ? "Waiting for wallet…"
+            : status === "creating"
+              ? "Approve market creation…"
+              : status === "seeding"
+                ? "Approve initial USDC supply…"
               : status === "confirmed"
                   ? "Market confirmed"
                   : "Launch market"}
