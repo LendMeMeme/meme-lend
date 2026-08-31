@@ -1,52 +1,104 @@
-import type { ConfirmedSignatureInfo, ParsedTransactionWithMeta } from "@solana/web3.js";
+import type { ConfirmedSignatureInfo, ParsedTransactionWithMeta, PublicKey } from "@solana/web3.js";
 import type { IndexedTransaction } from "@meme-lend/shared";
-import anchor from "@coral-xyz/anchor";
-import type { BN as BNType } from "@coral-xyz/anchor";
-import { MEME_LEND_IDL } from "@meme-lend/sdk";
 
-const { BorshEventCoder, BN } = anchor;
-
-const eventCoder = new BorshEventCoder(MEME_LEND_IDL);
-
-function jsonValue(value: unknown): unknown {
-  if (BN.isBN(value)) return (value as BNType).toString(10);
-  if (value && typeof value === "object" && "toBase58" in value) {
-    const toBase58 = (value as { toBase58?: () => string }).toBase58;
-    if (typeof toBase58 === "function") return toBase58.call(value);
+const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function base58(value: string): Uint8Array {
+  const bytes: number[] = [0];
+  for (const character of value) {
+    const digit = ALPHABET.indexOf(character);
+    if (digit < 0) throw new Error("Invalid base58 instruction data");
+    let carry = digit;
+    for (let index = 0; index < bytes.length; index += 1) {
+      carry += bytes[index] * 58;
+      bytes[index] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
   }
-  if (Array.isArray(value)) return value.map(jsonValue);
-  if (value && typeof value === "object")
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, jsonValue(child)]));
-  return value;
+  for (const character of value) {
+    if (character !== "1") break;
+    bytes.push(0);
+  }
+  return Uint8Array.from(bytes.reverse());
+}
+
+const EVENTS = [
+  "ProtocolInitialized",
+  "MarketCreated",
+  "ProtocolPauseChanged",
+  "MarketPauseChanged",
+  "InterestAccrued",
+  "LiquiditySupplied",
+  "LiquidityWithdrawn",
+  "OracleObservationSubmitted",
+  "CollateralDeposited",
+  "CollateralWithdrawn",
+  "Borrowed",
+  "Repaid",
+  "FirstLossReserveDeposited",
+  "MarketCreatorFeesClaimed",
+  "ProtocolFeesClaimed",
+  "PositionLiquidated",
+  "LenderRewardsFunded",
+  "LenderRewardsClaimed",
+] as const;
+const MARKET_INDEX: Array<number | null> = [
+  null,
+  5,
+  null,
+  2,
+  0,
+  1,
+  1,
+  1,
+  1,
+  1,
+  2,
+  1,
+  1,
+  1,
+  3,
+  1,
+  1,
+  1,
+];
+const ACTOR_INDEX: Array<number | null> = [0, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const AMOUNT_TAGS = new Set([5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
+function little(data: Uint8Array, offset: number, length: number): bigint {
+  let result = 0n;
+  for (let index = length - 1; index >= 0; index -= 1)
+    result = (result << 8n) | BigInt(data[offset + index] ?? 0);
+  return result;
 }
 
 export function eventRecords(
   signature: ConfirmedSignatureInfo,
   transaction: ParsedTransactionWithMeta,
+  programId: PublicKey,
 ): IndexedTransaction[] {
-  const logs = transaction.meta?.logMessages ?? [];
-  return logs.flatMap((line, eventIndex) => {
-    const marker = "Program data: ";
-    if (!line.startsWith(marker)) return [];
-    const decoded = eventCoder.decode(line.slice(marker.length));
-    if (!decoded) return [];
-    const payload = jsonValue(decoded.data) as Record<string, unknown>;
-    const market = typeof payload.market === "string" ? payload.market : null;
-    const actorKeys = [
-      "lender",
-      "borrower",
-      "payer",
-      "liquidator",
-      "creator",
-      "funder",
-      "contributor",
-      "publisher",
-      "recipient",
-    ];
+  return transaction.transaction.message.instructions.flatMap((instruction, eventIndex) => {
+    if (
+      !("data" in instruction) ||
+      !("accounts" in instruction) ||
+      !instruction.programId.equals(programId)
+    )
+      return [];
+    const bytes = base58(instruction.data),
+      tag = bytes[0];
+    if (tag === undefined || tag > 17) return [];
+    const marketIndex = MARKET_INDEX[tag],
+      actorIndex = ACTOR_INDEX[tag];
+    const market =
+      marketIndex === null ? null : (instruction.accounts[marketIndex]?.toBase58() ?? null);
     const actor =
-      actorKeys
-        .map((key) => payload[key])
-        .find((value): value is string => typeof value === "string") ?? null;
+      actorIndex === null ? null : (instruction.accounts[actorIndex]?.toBase58() ?? null);
+    const payload: Record<string, unknown> = { tag };
+    if (AMOUNT_TAGS.has(tag) && bytes.length >= 9)
+      payload.amount = little(bytes, 1, tag === 6 ? 16 : 8).toString();
     return [
       {
         id: `${signature.signature}:${eventIndex}`,
@@ -56,7 +108,7 @@ export function eventRecords(
         blockTime:
           signature.blockTime == null ? null : new Date(signature.blockTime * 1000).toISOString(),
         market,
-        event: decoded.name,
+        event: EVENTS[tag],
         actor,
         payload,
       },

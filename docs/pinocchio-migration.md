@@ -1,22 +1,22 @@
 # Pinocchio optimization track
 
-The Anchor implementation in `programs/meme_lending` remains the audited behavioral reference.
+The Anchor implementation in `programs/meme_lending` remains the behavioral reference.
 The optimized implementation lives in `programs/meme_lending_pinocchio` and will use a distinct
 program ID. No mainnet state is shared implicitly between the two programs.
 
 ## Acceptance gates
 
-The optimized program may replace the reference deployment candidate only after it has:
+The optimized program is the active deployment candidate. Public launch still requires:
 
 1. Equivalent account ownership, signer, writable, PDA, mint, vault, and token-program checks.
-2. Differential state-transition tests for every public instruction.
+2. End-to-end state-transition coverage for every public instruction against the compiled ELF.
 3. The same oracle failure asymmetry: failures block borrowing and collateral withdrawal, but do
    not block repayment or collateral deposits.
-4. Equivalent invariant and adversarial coverage, plus a new independent audit.
+4. Equivalent invariant and adversarial coverage, plus an independent audit.
 5. Reproducible SBF artifacts with measured binary size and compute-unit results.
 
-Binary size alone is not an acceptance criterion. The Anchor version remains deployable until all
-gates above pass.
+Binary size alone is not an acceptance criterion. Do not accept public deposits until all gates
+above pass and the exact release binary has a target-cluster smoke test.
 
 ## Implemented optimizations
 
@@ -33,4 +33,4 @@ gates above pass.
   decoding or serialization.
 - Lending arithmetic matches the reference program's conservative rounding test vectors.
 
-Optimized program ID: `3rkRSEiVbummMYVx91shz5obS1pQQGEkTpGZoHBUx4an`.
+Optimized program ID: `FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX`.

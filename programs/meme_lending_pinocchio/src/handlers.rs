@@ -7,16 +7,22 @@ use pinocchio::{
 
 use crate::{
     codec::Decoder,
-    cpi::create_program_account,
+    constants::{
+        ALLOWED_LLTV_BPS, MAX_LIQUIDATION_BONUS_BPS, MAX_ORACLE_SOURCES, MAX_TOKEN_DECIMALS,
+        MAX_TOTAL_FEE_BPS, RATE_SCALE,
+    },
+    cpi::{create_program_account, create_token_account},
     pda::{
         self, ASSOCIATED_TOKEN_PROGRAM, BORROWER_POSITION_SEED, GLOBAL_CONFIG_SEED,
         LENDER_POSITION_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, ORACLE_CONFIG_SEED,
-        ORACLE_OBSERVATION_SEED, RESERVE_SEED, RESERVE_VAULT_SEED,
+        ORACLE_OBSERVATION_SEED, RESERVE_SEED, RESERVE_VAULT_SEED, REWARDS_SEED, REWARD_VAULT_SEED,
     },
     state::{
         AccountHeader, AccountKind, BorrowerPosition, FirstLossReserve, GlobalConfig,
-        LenderPosition, Market, OracleConfiguration, OracleObservation, GLOBAL_FLAG_PAUSED,
-        MARKET_FLAG_BORROWING_PAUSED, MARKET_FLAG_REWARDS_ENABLED, STATE_VERSION,
+        LenderPosition, Market, MarketRewards, OracleConfiguration, OracleKind, OracleObservation,
+        GLOBAL_FLAG_PAUSED, MARKET_FLAG_BORROWING_PAUSED, MARKET_FLAG_REWARDS_ENABLED,
+        ORACLE_FLAG_CUSTOM_HIGH_RISK, STATE_VERSION, TOKEN_FLAG_COLLATERAL_2022,
+        TOKEN_FLAG_LOAN_2022,
     },
     validation, INITIAL_AUTHORITY,
 };
@@ -25,6 +31,13 @@ fn payload(data: &[u8]) -> Result<Decoder<'_>, ProgramError> {
     data.get(1..)
         .map(Decoder::new)
         .ok_or(ProgramError::InvalidInstructionData)
+}
+
+fn verify_system_program(account: &AccountView) -> ProgramResult {
+    if !account.executable() || account.address() != &pinocchio_system::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    Ok(())
 }
 
 fn verify_market(
@@ -138,16 +151,48 @@ fn decode_oracle(
     Ok((config, observation))
 }
 
-/// Accounts: authority/payer, global config PDA.
+fn decode_rewards(
+    program_id: &Address,
+    market_account: &AccountView,
+    rewards_account: &AccountView,
+) -> Result<MarketRewards, ProgramError> {
+    validation::owner(rewards_account, program_id)?;
+    let rewards = MarketRewards::decode(&rewards_account.try_borrow()?)?;
+    pda::verify(
+        rewards_account.address(),
+        &[REWARDS_SEED, market_account.address().as_ref()],
+        rewards.header.bump,
+        program_id,
+    )?;
+    if rewards.market != *market_account.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(rewards)
+}
+
+fn settle_lender_rewards(position: &mut LenderPosition, rewards: &MarketRewards) -> ProgramResult {
+    let (owed, checkpoint) = crate::math::settle_rewards(
+        position.supply_shares,
+        position.reward_index_checkpoint,
+        rewards.reward_index,
+        position.reward_owed,
+    )?;
+    position.reward_owed = owed;
+    position.reward_index_checkpoint = checkpoint;
+    Ok(())
+}
+
+/// Accounts: authority/payer, global config PDA, system program.
 /// Data: tag, approved loan mint, fee recipient, max oracle age, bump.
 pub fn initialize_protocol(
     program_id: &Address,
     accounts: &mut [AccountView],
     data: &[u8],
 ) -> ProgramResult {
-    let [authority, global] = accounts else {
+    let [authority, global, system_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+    verify_system_program(system_program)?;
     validation::signer(authority)?;
     validation::writable(authority)?;
     validation::writable(global)?;
@@ -184,6 +229,313 @@ pub fn initialize_protocol(
         flags: 0,
     };
     config.encode(&mut global.try_borrow_mut()?)
+}
+
+/// Accounts: creator, global, collateral mint, loan mint, market authority,
+/// market, oracle config, reserve, liquidity vault, collateral vault, reserve
+/// vault, collateral token program, loan token program.
+///
+/// The two associated vaults are created idempotently by the client in the same
+/// transaction. The program creates every program-owned PDA and the isolated
+/// reserve token vault atomically.
+pub fn create_market(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [creator, global_account, collateral_mint, loan_mint, market_authority, market_account, oracle_account, reserve_account, liquidity_vault, collateral_vault, reserve_vault, collateral_token_program, loan_token_program, system_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(creator)?;
+    verify_system_program(system_program)?;
+    for account in [
+        &*creator,
+        &*global_account,
+        &*market_account,
+        &*oracle_account,
+        &*reserve_account,
+        &*reserve_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    if !market_account.is_data_empty()
+        || !oracle_account.is_data_empty()
+        || !reserve_account.is_data_empty()
+        || !reserve_vault.is_data_empty()
+        || collateral_mint.address() == loan_mint.address()
+    {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    let mut global = decode_global(program_id, global_account)?;
+    if global.paused() || loan_mint.address().as_array() != &global.approved_loan_mint {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let collateral_decimals = validation::mint_decimals(collateral_mint, collateral_token_program)?;
+    let loan_decimals = validation::mint_decimals(loan_mint, loan_token_program)?;
+    if collateral_decimals > MAX_TOKEN_DECIMALS || loan_decimals > MAX_TOKEN_DECIMALS {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let mut decoder = payload(data)?;
+    let config_hash = *decoder.take()?;
+    let lltv_bps = decoder.u16()?;
+    let liquidation_bonus_bps = decoder.u16()?;
+    let close_factor_bps = decoder.u16()?;
+    let creator_fee_bps = decoder.u16()?;
+    let protocol_fee_bps = decoder.u16()?;
+    let rate_model_id = decoder.u8()?;
+    let market_borrow_cap = decoder.u64()?;
+    let wallet_borrow_cap = decoder.u64()?;
+    let oracle_kind = decoder.u8()?;
+    let oracle_max_age_seconds = decoder.u32()?;
+    let oracle_max_confidence_bps = decoder.u16()?;
+    let oracle_max_deviation_bps = decoder.u16()?;
+    let oracle_price_decimals = decoder.u8()?;
+    let source_count = decoder.u8()?;
+    let sources = [
+        *decoder.take()?,
+        *decoder.take()?,
+        *decoder.take()?,
+        *decoder.take()?,
+        *decoder.take()?,
+    ];
+    let market_bump = decoder.u8()?;
+    let authority_bump = decoder.u8()?;
+    let oracle_bump = decoder.u8()?;
+    let reserve_bump = decoder.u8()?;
+    let liquidity_vault_bump = decoder.u8()?;
+    let collateral_vault_bump = decoder.u8()?;
+    let reserve_vault_bump = decoder.u8()?;
+    decoder.finish()?;
+
+    let fees = creator_fee_bps
+        .checked_add(protocol_fee_bps)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if !ALLOWED_LLTV_BPS.contains(&lltv_bps)
+        || liquidation_bonus_bps > MAX_LIQUIDATION_BONUS_BPS
+        || close_factor_bps == 0
+        || close_factor_bps > 10_000
+        || fees > MAX_TOTAL_FEE_BPS
+        || rate_model_id > 1
+        || market_borrow_cap == 0
+        || wallet_borrow_cap == 0
+        || oracle_kind != OracleKind::Custom as u8
+        || oracle_max_age_seconds == 0
+        || oracle_max_age_seconds > global.max_oracle_age_seconds
+        || oracle_max_confidence_bps > 10_000
+        || oracle_max_deviation_bps > 10_000
+        || oracle_price_decimals > MAX_TOKEN_DECIMALS
+        || source_count == 0
+        || usize::from(source_count) > MAX_ORACLE_SOURCES
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+    if sources[..usize::from(source_count)].contains(&[0; 32])
+        || sources[usize::from(source_count)..]
+            .iter()
+            .any(|source| *source != [0; 32])
+    {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // The hash commits to the exact immutable optimized ABI bytes, excluding
+    // the hash itself and creation-only bumps.
+    let canonical = data
+        .get(
+            33..data
+                .len()
+                .checked_sub(7)
+                .ok_or(ProgramError::InvalidInstructionData)?,
+        )
+        .ok_or(ProgramError::InvalidInstructionData)?;
+    let expected_hash = solana_sha256_hasher::hashv(&[
+        b"meme-lend-pinocchio-market-v1",
+        creator.address().as_ref(),
+        collateral_mint.address().as_ref(),
+        loan_mint.address().as_ref(),
+        collateral_token_program.address().as_ref(),
+        loan_token_program.address().as_ref(),
+        canonical,
+    ]);
+    if expected_hash.as_ref() != config_hash {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    pda::verify_canonical(
+        market_account.address(),
+        &[MARKET_SEED, &config_hash],
+        market_bump,
+        program_id,
+    )?;
+    pda::verify_canonical(
+        market_authority.address(),
+        &[MARKET_AUTHORITY_SEED, market_account.address().as_ref()],
+        authority_bump,
+        program_id,
+    )?;
+    pda::verify_canonical(
+        oracle_account.address(),
+        &[ORACLE_CONFIG_SEED, market_account.address().as_ref()],
+        oracle_bump,
+        program_id,
+    )?;
+    pda::verify_canonical(
+        reserve_account.address(),
+        &[RESERVE_SEED, market_account.address().as_ref()],
+        reserve_bump,
+        program_id,
+    )?;
+    pda::verify_canonical(
+        reserve_vault.address(),
+        &[RESERVE_VAULT_SEED, market_account.address().as_ref()],
+        reserve_vault_bump,
+        program_id,
+    )?;
+    verify_ata_vault(
+        liquidity_vault,
+        market_authority,
+        loan_token_program,
+        loan_mint,
+        liquidity_vault_bump,
+    )?;
+    verify_ata_vault(
+        collateral_vault,
+        market_authority,
+        collateral_token_program,
+        collateral_mint,
+        collateral_vault_bump,
+    )?;
+
+    let market_bump_seed = [market_bump];
+    let market_seeds = pinocchio::instruction::seeds!(MARKET_SEED, &config_hash, &market_bump_seed);
+    create_program_account(
+        creator,
+        market_account,
+        program_id,
+        Market::LEN,
+        &Signer::from(&market_seeds),
+    )?;
+    let oracle_bump_seed = [oracle_bump];
+    let oracle_seeds = pinocchio::instruction::seeds!(
+        ORACLE_CONFIG_SEED,
+        market_account.address().as_ref(),
+        &oracle_bump_seed
+    );
+    create_program_account(
+        creator,
+        oracle_account,
+        program_id,
+        OracleConfiguration::LEN,
+        &Signer::from(&oracle_seeds),
+    )?;
+    let reserve_bump_seed = [reserve_bump];
+    let reserve_seeds = pinocchio::instruction::seeds!(
+        RESERVE_SEED,
+        market_account.address().as_ref(),
+        &reserve_bump_seed
+    );
+    create_program_account(
+        creator,
+        reserve_account,
+        program_id,
+        FirstLossReserve::LEN,
+        &Signer::from(&reserve_seeds),
+    )?;
+    let reserve_vault_bump_seed = [reserve_vault_bump];
+    let reserve_vault_seeds = pinocchio::instruction::seeds!(
+        RESERVE_VAULT_SEED,
+        market_account.address().as_ref(),
+        &reserve_vault_bump_seed
+    );
+    create_token_account(
+        creator,
+        reserve_vault,
+        loan_mint,
+        market_authority.address(),
+        loan_token_program,
+        &Signer::from(&reserve_vault_seeds),
+    )?;
+
+    let mut token_program_flags = 0;
+    if collateral_token_program.address() != &pinocchio_token::ID {
+        token_program_flags |= TOKEN_FLAG_COLLATERAL_2022;
+    }
+    if loan_token_program.address() != &pinocchio_token::ID {
+        token_program_flags |= TOKEN_FLAG_LOAN_2022;
+    }
+    Market {
+        header: AccountHeader {
+            version: STATE_VERSION,
+            kind: AccountKind::Market,
+            bump: market_bump,
+        },
+        authority_bump,
+        vault_bumps: [
+            liquidity_vault_bump,
+            collateral_vault_bump,
+            reserve_vault_bump,
+        ],
+        creator: *creator.address().as_array(),
+        collateral_mint: *collateral_mint.address().as_array(),
+        loan_mint: *loan_mint.address().as_array(),
+        config_hash,
+        lltv_bps,
+        liquidation_bonus_bps,
+        close_factor_bps,
+        creator_fee_bps,
+        protocol_fee_bps,
+        rate_model_id,
+        flags: 0,
+        token_program_flags,
+        market_borrow_cap,
+        wallet_borrow_cap,
+        total_supply_shares: 0,
+        total_borrow_shares: 0,
+        borrow_index: RATE_SCALE,
+        total_debt: 0,
+        bad_debt: 0,
+        creator_fees_claimable: 0,
+        protocol_fees_claimable: 0,
+        last_accrual_timestamp: Clock::get()?.unix_timestamp,
+    }
+    .encode(&mut market_account.try_borrow_mut()?)?;
+    OracleConfiguration {
+        header: AccountHeader {
+            version: STATE_VERSION,
+            kind: AccountKind::OracleConfiguration,
+            bump: oracle_bump,
+        },
+        market: *market_account.address().as_array(),
+        kind: OracleKind::Custom,
+        max_age_seconds: oracle_max_age_seconds,
+        max_confidence_bps: oracle_max_confidence_bps,
+        max_deviation_bps: oracle_max_deviation_bps,
+        price_decimals: oracle_price_decimals,
+        source_count,
+        sources,
+        flags: ORACLE_FLAG_CUSTOM_HIGH_RISK,
+    }
+    .encode(&mut oracle_account.try_borrow_mut()?)?;
+    FirstLossReserve {
+        header: AccountHeader {
+            version: STATE_VERSION,
+            kind: AccountKind::FirstLossReserve,
+            bump: reserve_bump,
+        },
+        market: *market_account.address().as_array(),
+        deposited: 0,
+        absorbed_losses: 0,
+    }
+    .encode(&mut reserve_account.try_borrow_mut()?)?;
+    global.market_count = global
+        .market_count
+        .checked_add(1)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    global.encode(&mut global_account.try_borrow_mut()?)
 }
 
 /// Accounts: authority, global config PDA. Data: tag, paused.
@@ -320,11 +672,18 @@ pub fn supply_usdc(
     data: &[u8],
 ) -> ProgramResult {
     validation::distinct_writable(accounts)?;
+    if accounts.len() != 9 && accounts.len() != 10 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    let (without_system, system_tail) = accounts.split_at_mut(accounts.len() - 1);
+    verify_system_program(&system_tail[0])?;
+    let (base, reward_tail) = without_system.split_at_mut(8);
     let [lender, market_account, position_account, lender_tokens, liquidity_vault, loan_mint, market_authority, token_program] =
-        accounts
+        base
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+    let rewards_account = reward_tail.first();
     validation::signer(lender)?;
     for account in [
         &*lender,
@@ -344,11 +703,21 @@ pub fn supply_usdc(
     }
     let mut market = Market::decode(&market_account.try_borrow()?)?;
     verify_market(program_id, market_account, &market, market_authority)?;
-    if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0
-        || loan_mint.address().as_array() != &market.loan_mint
-    {
+    if loan_mint.address().as_array() != &market.loan_mint {
         return Err(ProgramError::InvalidArgument);
     }
+    let rewards = if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0 {
+        Some(decode_rewards(
+            program_id,
+            market_account,
+            rewards_account.ok_or(ProgramError::NotEnoughAccountKeys)?,
+        )?)
+    } else {
+        if rewards_account.is_some() {
+            return Err(ProgramError::InvalidArgument);
+        }
+        None
+    };
     verify_ata_vault(
         liquidity_vault,
         market_authority,
@@ -404,7 +773,7 @@ pub fn supply_usdc(
             market: *market_account.address().as_array(),
             owner: *lender.address().as_array(),
             supply_shares: 0,
-            reward_index_checkpoint: 0,
+            reward_index_checkpoint: rewards.map_or(0, |value| value.reward_index),
             reward_owed: 0,
         }
     } else {
@@ -427,6 +796,9 @@ pub fn supply_usdc(
         }
         position
     };
+    if let Some(rewards) = &rewards {
+        settle_lender_rewards(&mut position, rewards)?;
+    }
     crate::cpi::transfer_checked(
         token_program,
         lender_tokens,
@@ -456,12 +828,13 @@ pub fn deposit_collateral(
     data: &[u8],
 ) -> ProgramResult {
     validation::distinct_writable(accounts)?;
-    let [borrower, market_account, position_account, borrower_tokens, collateral_vault, collateral_mint, market_authority, token_program] =
+    let [borrower, market_account, position_account, borrower_tokens, collateral_vault, collateral_mint, market_authority, token_program, system_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
     validation::signer(borrower)?;
+    verify_system_program(system_program)?;
     for account in [
         &*borrower,
         &*position_account,
@@ -675,11 +1048,16 @@ pub fn withdraw_usdc(
     data: &[u8],
 ) -> ProgramResult {
     validation::distinct_writable(accounts)?;
+    if accounts.len() != 8 && accounts.len() != 9 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    let (base, reward_tail) = accounts.split_at_mut(8);
     let [lender, market_account, position_account, lender_tokens, liquidity_vault, loan_mint, market_authority, token_program] =
-        accounts
+        base
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+    let rewards_account = reward_tail.first();
     validation::signer(lender)?;
     for account in [
         &*market_account,
@@ -694,11 +1072,21 @@ pub fn withdraw_usdc(
     decoder.finish()?;
     let mut market = Market::decode(&market_account.try_borrow()?)?;
     verify_market(program_id, market_account, &market, market_authority)?;
-    if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0
-        || loan_mint.address().as_array() != &market.loan_mint
-    {
+    if loan_mint.address().as_array() != &market.loan_mint {
         return Err(ProgramError::InvalidArgument);
     }
+    let rewards = if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0 {
+        Some(decode_rewards(
+            program_id,
+            market_account,
+            rewards_account.ok_or(ProgramError::NotEnoughAccountKeys)?,
+        )?)
+    } else {
+        if rewards_account.is_some() {
+            return Err(ProgramError::InvalidArgument);
+        }
+        None
+    };
     verify_ata_vault(
         liquidity_vault,
         market_authority,
@@ -723,6 +1111,9 @@ pub fn withdraw_usdc(
         || position.supply_shares < shares
     {
         return Err(ProgramError::InvalidAccountData);
+    }
+    if let Some(rewards) = &rewards {
+        settle_lender_rewards(&mut position, rewards)?;
     }
     let user_tokens = validation::token_account(lender_tokens, token_program)?;
     if user_tokens.mint != market.loan_mint || user_tokens.authority != *lender.address().as_array()
@@ -1032,10 +1423,12 @@ pub fn submit_oracle_observation(
     accounts: &mut [AccountView],
     data: &[u8],
 ) -> ProgramResult {
-    let [publisher, market_account, config_account, observation_account] = accounts else {
+    let [publisher, market_account, config_account, observation_account, system_program] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
     validation::signer(publisher)?;
+    verify_system_program(system_program)?;
     validation::writable(publisher)?;
     validation::writable(observation_account)?;
     validation::owner(market_account, program_id)?;
@@ -1539,4 +1932,248 @@ pub fn liquidate(program_id: &Address, accounts: &mut [AccountView], data: &[u8]
     position.encode(&mut position_account.try_borrow_mut()?)?;
     reserve.encode(&mut reserve_account.try_borrow_mut()?)?;
     market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+/// Enables and funds the single reward stream for an isolated market. The
+/// creator chooses the immutable reward mint on first funding; anyone may top
+/// up that same stream afterward.
+pub fn fund_lender_rewards(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [funder, market_account, rewards_account, funder_tokens, reward_vault, reward_mint, market_authority, token_program, system_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(funder)?;
+    verify_system_program(system_program)?;
+    for account in [
+        &*funder,
+        &*market_account,
+        &*rewards_account,
+        &*funder_tokens,
+        &*reward_vault,
+    ] {
+        validation::writable(account)?;
+    }
+    let mut decoder = payload(data)?;
+    let amount = decoder.u64()?;
+    let rewards_bump = decoder.u8()?;
+    let vault_bump = decoder.u8()?;
+    decoder.finish()?;
+    if amount == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let mut market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    let decimals = validation::mint_decimals(reward_mint, token_program)?;
+    if decimals > MAX_TOKEN_DECIMALS {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let source = validation::token_account(funder_tokens, token_program)?;
+    if source.mint != *reward_mint.address().as_array()
+        || source.authority != *funder.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let mut rewards = if rewards_account.is_data_empty() {
+        if market.flags & MARKET_FLAG_REWARDS_ENABLED != 0
+            || market.creator != *funder.address().as_array()
+            || !reward_vault.is_data_empty()
+        {
+            return Err(ProgramError::InvalidArgument);
+        }
+        pda::verify_canonical(
+            rewards_account.address(),
+            &[REWARDS_SEED, market_account.address().as_ref()],
+            rewards_bump,
+            program_id,
+        )?;
+        pda::verify_canonical(
+            reward_vault.address(),
+            &[REWARD_VAULT_SEED, market_account.address().as_ref()],
+            vault_bump,
+            program_id,
+        )?;
+        let rewards_bump_seed = [rewards_bump];
+        let rewards_seeds = pinocchio::instruction::seeds!(
+            REWARDS_SEED,
+            market_account.address().as_ref(),
+            &rewards_bump_seed
+        );
+        create_program_account(
+            funder,
+            rewards_account,
+            program_id,
+            MarketRewards::LEN,
+            &Signer::from(&rewards_seeds),
+        )?;
+        let vault_bump_seed = [vault_bump];
+        let vault_seeds = pinocchio::instruction::seeds!(
+            REWARD_VAULT_SEED,
+            market_account.address().as_ref(),
+            &vault_bump_seed
+        );
+        create_token_account(
+            funder,
+            reward_vault,
+            reward_mint,
+            market_authority.address(),
+            token_program,
+            &Signer::from(&vault_seeds),
+        )?;
+        market.flags |= MARKET_FLAG_REWARDS_ENABLED;
+        MarketRewards {
+            header: AccountHeader {
+                version: STATE_VERSION,
+                kind: AccountKind::MarketRewards,
+                bump: rewards_bump,
+            },
+            vault_bump,
+            market: *market_account.address().as_array(),
+            reward_mint: *reward_mint.address().as_array(),
+            reward_index: 0,
+            undistributed_rewards: 0,
+        }
+    } else {
+        let rewards = decode_rewards(program_id, market_account, rewards_account)?;
+        if market.flags & MARKET_FLAG_REWARDS_ENABLED == 0
+            || rewards.reward_mint != *reward_mint.address().as_array()
+            || rewards.header.bump != rewards_bump
+            || rewards.vault_bump != vault_bump
+        {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        pda::verify(
+            reward_vault.address(),
+            &[REWARD_VAULT_SEED, market_account.address().as_ref()],
+            rewards.vault_bump,
+            program_id,
+        )?;
+        let vault = validation::token_account(reward_vault, token_program)?;
+        if vault.mint != rewards.reward_mint
+            || vault.authority != *market_authority.address().as_array()
+        {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        rewards
+    };
+
+    crate::cpi::transfer_checked(
+        token_program,
+        funder_tokens,
+        reward_mint,
+        reward_vault,
+        funder,
+        amount,
+        decimals,
+        &[],
+    )?;
+    let distributable = amount
+        .checked_add(rewards.undistributed_rewards)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if market.total_supply_shares == 0 {
+        rewards.undistributed_rewards = distributable;
+    } else {
+        let delta = crate::math::mul_div_floor(
+            u128::from(distributable),
+            RATE_SCALE,
+            market.total_supply_shares,
+        )?;
+        rewards.reward_index = rewards
+            .reward_index
+            .checked_add(delta)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        rewards.undistributed_rewards = 0;
+    }
+    rewards.encode(&mut rewards_account.try_borrow_mut()?)?;
+    market.encode(&mut market_account.try_borrow_mut()?)
+}
+
+/// Claims settled lender rewards. This path deliberately has no oracle or
+/// protocol-pause dependency so users can always exit earned rewards.
+pub fn claim_lender_rewards(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    validation::distinct_writable(accounts)?;
+    let [lender, market_account, position_account, rewards_account, lender_tokens, reward_vault, reward_mint, market_authority, token_program] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    validation::signer(lender)?;
+    for account in [&*position_account, &*lender_tokens, &*reward_vault] {
+        validation::writable(account)?;
+    }
+    payload(data)?.finish()?;
+    let market = Market::decode(&market_account.try_borrow()?)?;
+    verify_market(program_id, market_account, &market, market_authority)?;
+    if market.flags & MARKET_FLAG_REWARDS_ENABLED == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let rewards = decode_rewards(program_id, market_account, rewards_account)?;
+    if rewards.reward_mint != *reward_mint.address().as_array() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    pda::verify(
+        reward_vault.address(),
+        &[REWARD_VAULT_SEED, market_account.address().as_ref()],
+        rewards.vault_bump,
+        program_id,
+    )?;
+    let vault = validation::token_account(reward_vault, token_program)?;
+    let destination = validation::token_account(lender_tokens, token_program)?;
+    if vault.mint != rewards.reward_mint
+        || vault.authority != *market_authority.address().as_array()
+        || destination.mint != rewards.reward_mint
+        || destination.authority != *lender.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    validation::owner(position_account, program_id)?;
+    let mut position = LenderPosition::decode(&position_account.try_borrow()?)?;
+    pda::verify(
+        position_account.address(),
+        &[
+            LENDER_POSITION_SEED,
+            market_account.address().as_ref(),
+            lender.address().as_ref(),
+        ],
+        position.header.bump,
+        program_id,
+    )?;
+    if position.market != *market_account.address().as_array()
+        || position.owner != *lender.address().as_array()
+    {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    settle_lender_rewards(&mut position, &rewards)?;
+    let amount = position.reward_owed;
+    if amount == 0 || vault.amount < amount {
+        return Err(ProgramError::InsufficientFunds);
+    }
+    position.reward_owed = 0;
+    let authority_bump = [market.authority_bump];
+    let authority_seeds = pinocchio::instruction::seeds!(
+        MARKET_AUTHORITY_SEED,
+        market_account.address().as_ref(),
+        &authority_bump
+    );
+    crate::cpi::transfer_checked(
+        token_program,
+        reward_vault,
+        reward_mint,
+        lender_tokens,
+        market_authority,
+        amount,
+        validation::mint_decimals(reward_mint, token_program)?,
+        core::slice::from_ref(&Signer::from(&authority_seeds)),
+    )?;
+    position.encode(&mut position_account.try_borrow_mut()?)
 }

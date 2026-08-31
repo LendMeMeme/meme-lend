@@ -4,6 +4,7 @@ export interface HealthInput {
   collateralAmount: bigint;
   collateralDecimals: number;
   price: bigint;
+  priceDecimals: number;
   lltvBps: number;
   closeFactorBps: number;
   maxRepay: bigint;
@@ -16,8 +17,11 @@ export function evaluateHealth(input: HealthInput) {
   if (input.collateralDecimals < 0 || input.collateralDecimals > 18)
     throw new Error("Unsupported collateral decimals");
   const debt = ceilDiv(input.borrowShares * input.borrowIndex, RATE_SCALE);
+  if (input.priceDecimals < 0 || input.priceDecimals > 18)
+    throw new Error("Unsupported oracle decimals");
   const collateralValue =
-    (input.collateralAmount * input.price) / (10n ** BigInt(input.collateralDecimals) * RATE_SCALE);
+    (input.collateralAmount * input.price) /
+    (10n ** BigInt(input.collateralDecimals) * 10n ** BigInt(input.priceDecimals));
   const liquidationLimit = (collateralValue * BigInt(input.lltvBps)) / 10_000n;
   const closeCap = (debt * BigInt(input.closeFactorBps)) / 10_000n;
   return {

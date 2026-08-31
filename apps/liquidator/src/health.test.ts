@@ -9,6 +9,7 @@ describe("liquidator health", () => {
       collateralAmount: 1_000_000n,
       collateralDecimals: 6,
       price: 3_000_000_000_000_000_000n,
+      priceDecimals: 18,
       lltvBps: 6_500,
       closeFactorBps: 5_000,
       maxRepay: 99n,

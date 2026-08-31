@@ -215,6 +215,7 @@ impl OracleConfiguration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MarketRewards {
     pub header: AccountHeader,
+    pub vault_bump: u8,
     pub market: [u8; ADDRESS_BYTES],
     pub reward_mint: [u8; ADDRESS_BYTES],
     pub reward_index: u128,
@@ -222,7 +223,7 @@ pub struct MarketRewards {
 }
 
 impl MarketRewards {
-    pub const LEN: usize = AccountHeader::LEN + ADDRESS_BYTES * 2 + 16 + 8;
+    pub const LEN: usize = AccountHeader::LEN + 1 + ADDRESS_BYTES * 2 + 16 + 8;
 
     pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
         if data.len() != Self::LEN {
@@ -231,6 +232,7 @@ impl MarketRewards {
         let mut decoder = Decoder::new(data);
         let value = Self {
             header: AccountHeader::decode(&mut decoder, AccountKind::MarketRewards)?,
+            vault_bump: decoder.u8()?,
             market: *decoder.take()?,
             reward_mint: *decoder.take()?,
             reward_index: decoder.u128()?,
@@ -246,6 +248,7 @@ impl MarketRewards {
         }
         let mut encoder = Encoder::new(data);
         self.header.encode(&mut encoder)?;
+        encoder.u8(self.vault_bump)?;
         encoder.put(&self.market)?;
         encoder.put(&self.reward_mint)?;
         encoder.u128(self.reward_index)?;
@@ -865,10 +868,11 @@ mod tests {
 
     #[test]
     fn derived_vaults_keep_rewards_and_reserve_compact() {
-        assert_eq!(MarketRewards::LEN, 91);
+        assert_eq!(MarketRewards::LEN, 92);
         assert_eq!(FirstLossReserve::LEN, 51);
         let rewards = MarketRewards {
             header: header(AccountKind::MarketRewards),
+            vault_bump: 253,
             market: [1; 32],
             reward_mint: [2; 32],
             reward_index: 3,

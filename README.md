@@ -9,7 +9,8 @@ status and first-loss reserve do not guarantee repayment.
 
 ## Workspace
 
-- `programs/meme_lending`: Anchor program and invariant-oriented Rust tests
+- `programs/meme_lending_pinocchio`: active optimized deployment candidate
+- `programs/meme_lending`: Anchor behavioral reference and invariant-oriented Rust tests
 - `packages/sdk`: canonical PDA, fixed-point math, quote, and transaction helpers
 - `packages/database`: MongoDB schemas and idempotent repositories
 - `packages/shared`: cross-service types and validation

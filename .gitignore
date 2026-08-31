@@ -6,6 +6,7 @@ dist/
 coverage/
 .turbo/
 .anchor/
+.tooling/
 *.tsbuildinfo
 .env
 .env.local

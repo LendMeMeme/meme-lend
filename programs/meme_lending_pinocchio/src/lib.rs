@@ -11,21 +11,30 @@ pub mod pda;
 pub mod state;
 pub mod validation;
 
-solana_address::declare_id!("3rkRSEiVbummMYVx91shz5obS1pQQGEkTpGZoHBUx4an");
+solana_address::declare_id!("FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX");
 pub const INITIAL_AUTHORITY: pinocchio::Address =
-    pinocchio::Address::from_str_const("52sZ6c8HUZh3H54Xr674xKKyJfqBPSpUnQfNwwRrffHA");
+    pinocchio::Address::from_str_const("5o32MNK5Fs6bW8g8H63z91gUn5E7XJJaFkZvXd4mAh5t");
+
+#[cfg(feature = "bpf-entrypoint")]
+solana_security_txt::security_txt! {
+    name: "Meme Lend (Pinocchio)",
+    project_url: "https://meme-lendweb-production.up.railway.app",
+    contacts: "link:https://github.com/CryptoDungeonMaster/meme-lend/security/advisories/new",
+    policy: "https://github.com/CryptoDungeonMaster/meme-lend/blob/main/SECURITY.md",
+    preferred_languages: "en",
+    source_code: "https://github.com/CryptoDungeonMaster/meme-lend"
+}
 
 #[cfg(feature = "bpf-entrypoint")]
 mod entrypoint {
     use pinocchio::{
-        default_panic_handler, no_allocator, program_entrypoint, AccountView, Address,
-        ProgramResult,
+        no_allocator, nostd_panic_handler, program_entrypoint, AccountView, Address, ProgramResult,
     };
 
     use crate::instruction::LendingInstruction;
 
     program_entrypoint!(process_instruction);
-    default_panic_handler!();
+    nostd_panic_handler!();
     no_allocator!();
 
     pub fn process_instruction(
@@ -38,6 +47,9 @@ mod entrypoint {
         match LendingInstruction::decode(instruction_data)? {
             LendingInstruction::InitializeProtocol => {
                 crate::handlers::initialize_protocol(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::CreateMarket => {
+                crate::handlers::create_market(_program_id, _accounts, instruction_data)
             }
             LendingInstruction::SetProtocolPause => {
                 crate::handlers::set_protocol_pause(_program_id, _accounts, instruction_data)
@@ -85,7 +97,12 @@ mod entrypoint {
             LendingInstruction::Liquidate => {
                 crate::handlers::liquidate(_program_id, _accounts, instruction_data)
             }
-            _ => Err(pinocchio::error::ProgramError::InvalidInstructionData),
+            LendingInstruction::FundLenderRewards => {
+                crate::handlers::fund_lender_rewards(_program_id, _accounts, instruction_data)
+            }
+            LendingInstruction::ClaimLenderRewards => {
+                crate::handlers::claim_lender_rewards(_program_id, _accounts, instruction_data)
+            }
         }
     }
 }

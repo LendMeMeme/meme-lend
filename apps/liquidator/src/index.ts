@@ -1,21 +1,35 @@
 import "dotenv/config";
-import anchor from "@coral-xyz/anchor";
-import type { BN as BNType } from "@coral-xyz/anchor";
-import { createMemeLendProgram, marketAuthorityPda } from "@meme-lend/sdk";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddressSync,
-  getMint,
-} from "@solana/spl-token";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+  decodePinocchioBorrowerPosition,
+  decodePinocchioMarket,
+  decodePinocchioOracleConfiguration,
+  decodePinocchioOracleObservation,
+  associatedTokenAddress,
+  getMintDecimals,
+  PINOCCHIO_TAG,
+  pinocchioAmount,
+  pinocchioInstruction,
+  pinocchioPdas,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+} from "@meme-lend/sdk";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  Transaction,
+  sendAndConfirmTransaction,
+  type AccountMeta,
+} from "@solana/web3.js";
 import { readFile } from "node:fs/promises";
 import { evaluateHealth, observationIsFresh } from "./health.js";
-
-const { AnchorProvider, BN, Wallet } = anchor;
 
 const connection = new Connection(
   process.env.SOLANA_RPC_HTTP ?? "http://127.0.0.1:8899",
   "confirmed",
+);
+const programId = new PublicKey(
+  process.env.PROGRAM_ID ?? "FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX",
 );
 const interval = Number(process.env.POLL_INTERVAL_MS ?? "5000");
 const maxRepay = BigInt(process.env.MAX_REPAY_USDC_UNITS ?? "18446744073709551615");
@@ -27,127 +41,122 @@ const signer = process.env.LIQUIDATOR_KEYPAIR_PATH
     )
   : Keypair.generate();
 const executionEnabled = Boolean(process.env.LIQUIDATOR_KEYPAIR_PATH);
-const program = createMemeLendProgram(
-  new AnchorProvider(connection, new Wallet(signer), { commitment: "confirmed" }),
-);
+const m = (pubkey: PublicKey, isWritable = false, isSigner = false): AccountMeta => ({
+  pubkey,
+  isWritable,
+  isSigner,
+});
 if (!executionEnabled)
   console.warn("Liquidator is dry-run only: LIQUIDATOR_KEYPAIR_PATH is not configured.");
 
 for (;;) {
   try {
-    const positions = await program.account.borrowerPosition.all();
+    const records = await connection.getProgramAccounts(programId, {
+      commitment: "confirmed",
+      filters: [{ dataSize: 91 }, { memcmp: { offset: 1, bytes: "7" } }],
+    });
     let unhealthy = 0;
-    for (const record of positions) {
-      const position = record.account as unknown as {
-        market: PublicKey;
-        owner: PublicKey;
-        collateralAmount: BNType;
-        borrowShares: BNType;
-      };
-      if (position.borrowShares.isZero()) continue;
-      const marketKey = position.market;
-      const market = (await program.account.market.fetch(marketKey)) as unknown as Record<
-        string,
-        PublicKey | BNType | number
-      >;
-      const oracleConfiguration = new PublicKey(market.oracleConfiguration as PublicKey);
-      const oracle = (await program.account.oracleConfiguration.fetch(
-        oracleConfiguration,
-      )) as unknown as { maxAgeSeconds: number };
-      const [oracleObservation] = PublicKey.findProgramAddressSync(
-        [Buffer.from("observation"), marketKey.toBuffer()],
-        program.programId,
-      );
-      const observation = (await program.account.oracleObservation.fetch(
-        oracleObservation,
-      )) as unknown as { price: BNType; publishedAt: BNType };
+    for (const record of records) {
+      const position = decodePinocchioBorrowerPosition(record.account.data);
+      if (position.borrowShares === 0n) continue;
+      const marketInfo = await connection.getAccountInfo(position.market, "confirmed");
+      if (!marketInfo) continue;
+      const market = decodePinocchioMarket(marketInfo.data);
+      const [oracleConfigKey] = pinocchioPdas.oracleConfig(position.market, programId);
+      const [observationKey] = pinocchioPdas.oracleObservation(position.market, programId);
+      const [oracleInfo, observationInfo] = await Promise.all([
+        connection.getAccountInfo(oracleConfigKey, "confirmed"),
+        connection.getAccountInfo(observationKey, "confirmed"),
+      ]);
+      if (!oracleInfo || !observationInfo) continue;
+      const oracle = decodePinocchioOracleConfiguration(oracleInfo.data);
+      const observation = decodePinocchioOracleObservation(observationInfo.data);
       if (
         !observationIsFresh(
           BigInt(Math.floor(Date.now() / 1000)),
-          BigInt(observation.publishedAt.toString()),
+          observation.publishedAt,
           oracle.maxAgeSeconds,
         )
       )
         continue;
-      const collateralMint = new PublicKey(market.collateralMint as PublicKey);
-      const loanMint = new PublicKey(market.loanMint as PublicKey);
-      const collateralTokenProgram = new PublicKey(market.collateralTokenProgram as PublicKey);
-      const loanTokenProgram = new PublicKey(market.loanTokenProgram as PublicKey);
-      const decimals = (
-        await getMint(connection, collateralMint, "confirmed", collateralTokenProgram)
-      ).decimals;
+      const collateralProgram = market.collateralToken2022
+        ? TOKEN_2022_PROGRAM_ID
+        : TOKEN_PROGRAM_ID;
+      const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+      const decimals = await getMintDecimals(connection, market.collateralMint, collateralProgram);
       const health = evaluateHealth({
-        borrowShares: BigInt(position.borrowShares.toString()),
-        borrowIndex: BigInt((market.borrowIndex as BNType).toString()),
-        collateralAmount: BigInt(position.collateralAmount.toString()),
+        borrowShares: position.borrowShares,
+        borrowIndex: market.borrowIndex,
+        collateralAmount: position.collateralAmount,
         collateralDecimals: decimals,
-        price: BigInt(observation.price.toString()),
-        lltvBps: market.lltvBps as number,
-        closeFactorBps: market.closeFactorBps as number,
+        price: observation.price,
+        priceDecimals: oracle.priceDecimals,
+        lltvBps: market.lltvBps,
+        closeFactorBps: market.closeFactorBps,
         maxRepay,
       });
       if (!health.unhealthy) continue;
-      unhealthy++;
-      const { debt, collateralValue, requestedRepay: requested } = health;
+      unhealthy += 1;
       console.info(
         JSON.stringify({
-          market: marketKey.toBase58(),
+          market: position.market.toBase58(),
           borrower: position.owner.toBase58(),
-          debt: debt.toString(),
-          collateralValue: collateralValue.toString(),
-          requestedRepay: requested.toString(),
+          debt: health.debt.toString(),
+          collateralValue: health.collateralValue.toString(),
+          requestedRepay: health.requestedRepay.toString(),
           executionEnabled,
         }),
       );
-      if (!executionEnabled || requested === 0n) continue;
-      const [marketAuthority] = marketAuthorityPda(program.programId, marketKey);
-      const [firstLossReserve] = PublicKey.findProgramAddressSync(
-        [Buffer.from("reserve"), marketKey.toBuffer()],
-        program.programId,
+      if (!executionEnabled || health.requestedRepay === 0n) continue;
+      const [authority] = pinocchioPdas.marketAuthority(position.market, programId);
+      const [reserve] = pinocchioPdas.reserve(position.market, programId);
+      const [reserveVault] = pinocchioPdas.reserveVault(position.market, programId);
+      const liquidity = associatedTokenAddress(market.loanMint, authority, loanProgram);
+      const collateralVault = associatedTokenAddress(
+        market.collateralMint,
+        authority,
+        collateralProgram,
       );
-      const reserve = (await program.account.firstLossReserve.fetch(
-        firstLossReserve,
-      )) as unknown as { vault: PublicKey };
-      const liquidatorUsdc = getAssociatedTokenAddressSync(
-        loanMint,
+      const liquidatorLoan = associatedTokenAddress(market.loanMint, signer.publicKey, loanProgram);
+      const liquidatorCollateral = associatedTokenAddress(
+        market.collateralMint,
         signer.publicKey,
-        false,
-        loanTokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
+        collateralProgram,
       );
-      const liquidatorCollateral = getAssociatedTokenAddressSync(
-        collateralMint,
-        signer.publicKey,
-        false,
-        collateralTokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
+      const instruction = pinocchioInstruction(
+        PINOCCHIO_TAG.liquidate,
+        [
+          m(signer.publicKey, false, true),
+          m(position.market, true),
+          m(record.pubkey, true),
+          m(liquidatorLoan, true),
+          m(liquidatorCollateral, true),
+          m(liquidity, true),
+          m(collateralVault, true),
+          m(reserve, true),
+          m(reserveVault, true),
+          m(market.loanMint),
+          m(market.collateralMint),
+          m(authority),
+          m(loanProgram),
+          m(collateralProgram),
+          m(oracleConfigKey),
+          m(observationKey),
+        ],
+        pinocchioAmount(health.requestedRepay),
+        programId,
       );
-      const signature = await program.methods
-        .liquidate(new BN(requested.toString()))
-        .accountsPartial({
-          liquidator: signer.publicKey,
-          market: marketKey,
-          borrowerPosition: record.publicKey,
-          oracleConfiguration,
-          oracleObservation,
-          firstLossReserve,
-          loanMint,
-          collateralMint,
-          liquidatorUsdc,
-          liquidatorCollateral,
-          liquidityVault: market.liquidityVault as PublicKey,
-          collateralVault: market.collateralVault as PublicKey,
-          reserveVault: reserve.vault,
-          marketAuthority,
-          loanTokenProgram,
-          collateralTokenProgram,
-        })
-        .rpc();
+      const signature = await sendAndConfirmTransaction(
+        connection,
+        new Transaction().add(instruction),
+        [signer],
+        { commitment: "confirmed" },
+      );
       console.info(
         JSON.stringify({
           event: "liquidation-submitted",
           signature,
-          market: marketKey.toBase58(),
+          market: position.market.toBase58(),
           borrower: position.owner.toBase58(),
         }),
       );
@@ -155,7 +164,7 @@ for (;;) {
     console.info(
       JSON.stringify({
         checkedAt: new Date().toISOString(),
-        borrowerPositionsScanned: positions.length,
+        borrowerPositionsScanned: records.length,
         unhealthy,
       }),
     );

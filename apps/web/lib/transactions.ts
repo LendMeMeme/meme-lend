@@ -1,185 +1,168 @@
-import { AnchorProvider, BN, BorshInstructionCoder, type Wallet } from "@coral-xyz/anchor";
 import {
-  borrowerPositionPda,
-  createMemeLendProgram,
-  lenderPositionPda,
-  marketAuthorityPda,
-  marketPda,
-  MEME_LEND_IDL,
+  decodePinocchioGlobalConfig,
+  decodePinocchioMarket,
+  encodeCreatePinocchioMarket,
+  associatedTokenAddress,
+  associatedTokenAddressWithBump,
+  createAssociatedTokenAccountIdempotentInstruction,
+  getMintDecimals,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  PINOCCHIO_PROGRAM_ID,
+  PINOCCHIO_TAG,
+  pinocchioAmount,
+  pinocchioInstruction,
+  pinocchioPdas,
+  pinocchioShares,
 } from "@meme-lend/sdk";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddressSync,
-  getMint,
-} from "@solana/spl-token";
-import { PublicKey, SystemProgram, type Connection, type Transaction } from "@solana/web3.js";
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  type AccountMeta,
+  type Connection,
+} from "@solana/web3.js";
 
 export type MarketAction =
   "Supply" | "Withdraw" | "Deposit collateral" | "Borrow" | "Repay" | "Liquidate";
-
-export const RATE_MODELS = {
-  standard: {
-    baseRate: "20000000000000000",
-    targetUtilizationBps: 8000,
-    slopeLow: "180000000000000000",
-    slopeHigh: "2000000000000000000",
-    maxBorrowRate: "2200000000000000000",
-  },
-  conservative: {
-    baseRate: "50000000000000000",
-    targetUtilizationBps: 7000,
-    slopeLow: "250000000000000000",
-    slopeHigh: "3000000000000000000",
-    maxBorrowRate: "3300000000000000000",
-  },
-} as const;
-
-const concatenate = (...parts: Uint8Array[]) => {
-  const output = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
-  let offset = 0;
-  for (const part of parts) {
-    output.set(part, offset);
-    offset += part.length;
-  }
-  return output;
-};
+export const RATE_MODELS = { standard: { id: 0 }, conservative: { id: 1 } } as const;
+const id = () => new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID ?? PINOCCHIO_PROGRAM_ID);
+const m = (pubkey: PublicKey, isWritable = false, isSigner = false): AccountMeta => ({
+  pubkey,
+  isWritable,
+  isSigner,
+});
 
 function parseUnits(value: string, decimals: number): bigint {
   if (!/^\d+(\.\d+)?$/.test(value)) throw new Error("Enter a positive decimal amount");
   const [whole, fraction = ""] = value.split(".");
   if (fraction.length > decimals)
     throw new Error(`This token supports at most ${decimals} decimal places`);
-  const units =
+  const result =
     BigInt(whole) * 10n ** BigInt(decimals) +
     BigInt((fraction + "0".repeat(decimals)).slice(0, decimals) || "0");
-  if (units <= 0n) throw new Error("Amount is too small");
-  return units;
+  if (result <= 0n) throw new Error("Amount is too small");
+  return result;
+}
+
+async function data(connection: Connection, key: PublicKey): Promise<Uint8Array> {
+  const account = await connection.getAccountInfo(key, "confirmed");
+  if (!account) throw new Error(`Required on-chain account is missing: ${key.toBase58()}`);
+  return account.data;
 }
 
 export async function buildCreateMarketTransaction(input: {
   collateralMint: string;
   oraclePublisher: string;
-  lltvBps: 5000 | 6500 | 7500;
+  lltvBps: 3000 | 4000 | 5000 | 6000 | 6500;
   rateModel: keyof typeof RATE_MODELS;
   marketBorrowCap: string;
   walletBorrowCap: string;
   owner: PublicKey;
   connection: Connection;
-  wallet: Wallet;
 }): Promise<{ transaction: Transaction; market: PublicKey }> {
-  const provider = new AnchorProvider(input.connection, input.wallet, { commitment: "confirmed" });
-  const program = createMemeLendProgram(provider);
-  const [globalConfig] = PublicKey.findProgramAddressSync(
-    [Buffer.from("global-config")],
-    program.programId,
-  );
-  const global = (await program.account.globalConfig.fetch(globalConfig)) as unknown as {
-    approvedLoanMint: PublicKey;
-    maxOracleAgeSeconds: number;
-  };
+  const programId = id();
+  const [globalConfig] = pinocchioPdas.globalConfig(programId);
+  const global = decodePinocchioGlobalConfig(await data(input.connection, globalConfig));
+  if (global.paused) throw new Error("Protocol market creation is paused");
   const collateralMint = new PublicKey(input.collateralMint);
   const loanMint = global.approvedLoanMint;
-  const [collateralInfo, loanInfo] = await Promise.all([
-    input.connection.getAccountInfo(collateralMint, "confirmed"),
-    input.connection.getAccountInfo(loanMint, "confirmed"),
+  const [ci, li] = await Promise.all([
+    input.connection.getAccountInfo(collateralMint),
+    input.connection.getAccountInfo(loanMint),
   ]);
-  if (!collateralInfo || !loanInfo)
-    throw new Error("Collateral or approved loan mint does not exist");
-  const collateralTokenProgram = collateralInfo.owner;
-  const loanTokenProgram = loanInfo.owner;
-  const loanDecimals = (await getMint(input.connection, loanMint, "confirmed", loanTokenProgram))
-    .decimals;
-  const rate = RATE_MODELS[input.rateModel];
-  const args: Record<string, unknown> = {
-    configHash: Array(32).fill(0),
+  if (!ci || !li) throw new Error("Collateral or approved loan mint does not exist");
+  const collateralTokenProgram = ci.owner,
+    loanTokenProgram = li.owner;
+  for (const token of [collateralTokenProgram, loanTokenProgram])
+    if (!token.equals(TOKEN_PROGRAM_ID) && !token.equals(TOKEN_2022_PROGRAM_ID))
+      throw new Error("Unsupported token program");
+  const decimals = await getMintDecimals(input.connection, loanMint, loanTokenProgram);
+  const config = {
     lltvBps: input.lltvBps,
     liquidationBonusBps: 1000,
     closeFactorBps: 5000,
     creatorFeeBps: 1000,
     protocolFeeBps: 500,
-    rateModel: {
-      baseRate: new BN(rate.baseRate),
-      targetUtilizationBps: rate.targetUtilizationBps,
-      slopeLow: new BN(rate.slopeLow),
-      slopeHigh: new BN(rate.slopeHigh),
-      maxBorrowRate: new BN(rate.maxBorrowRate),
-    },
-    marketBorrowCap: new BN(parseUnits(input.marketBorrowCap, loanDecimals).toString()),
-    walletBorrowCap: new BN(parseUnits(input.walletBorrowCap, loanDecimals).toString()),
-    oracleKind: { custom: {} },
+    rateModelId: RATE_MODELS[input.rateModel].id,
+    marketBorrowCap: parseUnits(input.marketBorrowCap, decimals),
+    walletBorrowCap: parseUnits(input.walletBorrowCap, decimals),
     oracleMaxAgeSeconds: Math.min(global.maxOracleAgeSeconds, 60),
     oracleMaxConfidenceBps: 500,
     oracleMaxDeviationBps: 1000,
     oraclePriceDecimals: 18,
     oracleSources: [new PublicKey(input.oraclePublisher)],
-  };
-  const encodedInstruction = new BorshInstructionCoder(MEME_LEND_IDL).encode("create_market", {
-    args,
+  } as const;
+  const initial = await encodeCreatePinocchioMarket({
+    creator: input.owner,
+    collateralMint,
+    loanMint,
+    collateralTokenProgram,
+    loanTokenProgram,
+    config,
+    bumps: [0, 0, 0, 0, 0, 0, 0],
   });
-  if (!encodedInstruction) throw new Error("Could not serialize immutable market configuration");
-  const configHash = new Uint8Array(
-    await crypto.subtle.digest(
-      "SHA-256",
-      concatenate(
-        new TextEncoder().encode("meme-lend-market-v1"),
-        input.owner.toBytes(),
-        collateralMint.toBytes(),
-        loanMint.toBytes(),
-        collateralTokenProgram.toBytes(),
-        loanTokenProgram.toBytes(),
-        encodedInstruction.subarray(8),
-      ),
+  const [market, mb] = pinocchioPdas.market(initial.configHash, programId);
+  const [authority, ab] = pinocchioPdas.marketAuthority(market, programId);
+  const [oracle, ob] = pinocchioPdas.oracleConfig(market, programId);
+  const [reserve, rb] = pinocchioPdas.reserve(market, programId);
+  const [reserveVault, rvb] = pinocchioPdas.reserveVault(market, programId);
+  const [liquidityVault, lvb] = associatedTokenAddressWithBump(
+    loanMint,
+    authority,
+    loanTokenProgram,
+  );
+  const [collateralVault, cvb] = associatedTokenAddressWithBump(
+    collateralMint,
+    authority,
+    collateralTokenProgram,
+  );
+  const encoded = await encodeCreatePinocchioMarket({
+    creator: input.owner,
+    collateralMint,
+    loanMint,
+    collateralTokenProgram,
+    loanTokenProgram,
+    config,
+    bumps: [mb, ab, ob, rb, lvb, cvb, rvb],
+  });
+  const transaction = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      input.owner,
+      liquidityVault,
+      authority,
+      loanMint,
+      loanTokenProgram,
+    ),
+    createAssociatedTokenAccountIdempotentInstruction(
+      input.owner,
+      collateralVault,
+      authority,
+      collateralMint,
+      collateralTokenProgram,
+    ),
+    pinocchioInstruction(
+      PINOCCHIO_TAG.createMarket,
+      [
+        m(input.owner, true, true),
+        m(globalConfig, true),
+        m(collateralMint),
+        m(loanMint),
+        m(authority),
+        m(market, true),
+        m(oracle, true),
+        m(reserve, true),
+        m(liquidityVault),
+        m(collateralVault),
+        m(reserveVault, true),
+        m(collateralTokenProgram),
+        m(loanTokenProgram),
+        m(SystemProgram.programId),
+      ],
+      encoded.data,
+      programId,
     ),
   );
-  args.configHash = [...configHash];
-  const [market] = marketPda(program.programId, configHash);
-  const [marketAuthority] = marketAuthorityPda(program.programId, market);
-  const [oracleConfiguration] = PublicKey.findProgramAddressSync(
-    [Buffer.from("oracle"), market.toBuffer()],
-    program.programId,
-  );
-  const [firstLossReserve] = PublicKey.findProgramAddressSync(
-    [Buffer.from("reserve"), market.toBuffer()],
-    program.programId,
-  );
-  const [reserveVault] = PublicKey.findProgramAddressSync(
-    [Buffer.from("reserve-vault"), market.toBuffer()],
-    program.programId,
-  );
-  const liquidityVault = getAssociatedTokenAddressSync(
-    loanMint,
-    marketAuthority,
-    true,
-    loanTokenProgram,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-  );
-  const collateralVault = getAssociatedTokenAddressSync(
-    collateralMint,
-    marketAuthority,
-    true,
-    collateralTokenProgram,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-  );
-  const transaction = await program.methods
-    .createMarket(args as never)
-    .accountsPartial({
-      creator: input.owner,
-      globalConfig,
-      collateralMint,
-      loanMint,
-      marketAuthority,
-      market,
-      oracleConfiguration,
-      firstLossReserve,
-      liquidityVault,
-      collateralVault,
-      reserveVault,
-      collateralTokenProgram,
-      loanTokenProgram,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
-    .transaction();
   return { transaction, market };
 }
 
@@ -189,154 +172,166 @@ export async function buildMarketTransaction(input: {
   market: string;
   owner: PublicKey;
   connection: Connection;
-  wallet: Wallet;
   borrower?: string;
 }): Promise<Transaction> {
-  const provider = new AnchorProvider(input.connection, input.wallet, { commitment: "confirmed" });
-  const program = createMemeLendProgram(provider);
-  const market = new PublicKey(input.market);
-  const account = (await program.account.market.fetch(market)) as unknown as Record<
-    string,
-    PublicKey
-  >;
-  const loanMint = new PublicKey(account.loanMint);
-  const collateralMint = new PublicKey(account.collateralMint);
-  const loanTokenProgram = new PublicKey(account.loanTokenProgram);
-  const collateralTokenProgram = new PublicKey(account.collateralTokenProgram);
-  const [authority] = marketAuthorityPda(program.programId, market);
-  const ownerLoan = getAssociatedTokenAddressSync(
-    loanMint,
-    input.owner,
-    false,
-    loanTokenProgram,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
+  const programId = id(),
+    marketKey = new PublicKey(input.market);
+  const market = decodePinocchioMarket(await data(input.connection, marketKey));
+  const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const collateralProgram = market.collateralToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const [authority] = pinocchioPdas.marketAuthority(marketKey, programId);
+  const liquidity = associatedTokenAddress(market.loanMint, authority, loanProgram);
+  const collateralVault = associatedTokenAddress(
+    market.collateralMint,
+    authority,
+    collateralProgram,
   );
-  const ownerCollateral = getAssociatedTokenAddressSync(
-    collateralMint,
+  const ownerLoan = associatedTokenAddress(market.loanMint, input.owner, loanProgram);
+  const ownerCollateral = associatedTokenAddress(
+    market.collateralMint,
     input.owner,
-    false,
-    collateralTokenProgram,
-    ASSOCIATED_TOKEN_PROGRAM_ID,
+    collateralProgram,
   );
-  const [lenderPosition] = lenderPositionPda(program.programId, market, input.owner);
+  const [lender, lenderBump] = pinocchioPdas.lenderPosition(marketKey, input.owner, programId);
   const borrowerOwner = input.borrower ? new PublicKey(input.borrower) : input.owner;
-  const [borrowerPosition] = borrowerPositionPda(program.programId, market, borrowerOwner);
-  const [globalConfig] = PublicKey.findProgramAddressSync(
-    [Buffer.from("global-config")],
-    program.programId,
+  const [borrower, borrowerBump] = pinocchioPdas.borrowerPosition(
+    marketKey,
+    borrowerOwner,
+    programId,
   );
-  const [observation] = PublicKey.findProgramAddressSync(
-    [Buffer.from("observation"), market.toBuffer()],
-    program.programId,
-  );
-  const [reserve] = PublicKey.findProgramAddressSync(
-    [Buffer.from("reserve"), market.toBuffer()],
-    program.programId,
-  );
-  const common = { market, marketAuthority: authority };
-  type Builder = {
-    accountsPartial(accounts: Record<string, unknown>): { transaction(): Promise<Transaction> };
-  };
-  const methods = program.methods as unknown as Record<string, (...args: unknown[]) => Builder>;
-  const amountMint = input.action === "Deposit collateral" ? collateralMint : loanMint;
-  const amountProgram =
-    input.action === "Deposit collateral" ? collateralTokenProgram : loanTokenProgram;
+  const [global] = pinocchioPdas.globalConfig(programId),
+    [oracle] = pinocchioPdas.oracleConfig(marketKey, programId);
+  const [observation] = pinocchioPdas.oracleObservation(marketKey, programId),
+    [reserve] = pinocchioPdas.reserve(marketKey, programId);
+  const [reserveVault] = pinocchioPdas.reserveVault(marketKey, programId),
+    [rewards] = pinocchioPdas.rewards(marketKey, programId);
+  const mint = input.action === "Deposit collateral" ? market.collateralMint : market.loanMint;
+  const tokenProgram = input.action === "Deposit collateral" ? collateralProgram : loanProgram;
   const decimals =
-    input.action === "Withdraw"
-      ? 0
-      : (await getMint(input.connection, amountMint, "confirmed", amountProgram)).decimals;
-  const amount = new BN(parseUnits(input.amount, decimals).toString());
-  if (input.action === "Supply")
-    return methods
-      .supplyUsdc(amount)
-      .accountsPartial({
-        lender: input.owner,
-        ...common,
-        lenderPosition,
-        marketRewards: null,
-        loanMint,
-        lenderUsdc: ownerLoan,
-        liquidityVault: account.liquidityVault,
-        loanTokenProgram,
-        systemProgram: SystemProgram.programId,
-      })
-      .transaction();
-  if (input.action === "Withdraw")
-    return methods
-      .withdrawUsdc(amount)
-      .accountsPartial({
-        lender: input.owner,
-        ...common,
-        lenderPosition,
-        marketRewards: null,
-        loanMint,
-        lenderUsdc: ownerLoan,
-        liquidityVault: account.liquidityVault,
-        loanTokenProgram,
-      })
-      .transaction();
+    input.action === "Withdraw" ? 0 : await getMintDecimals(input.connection, mint, tokenProgram);
+  const amount = parseUnits(input.amount, decimals),
+    tx = new Transaction();
+  if (input.action === "Supply") {
+    const keys = [
+      m(input.owner, true, true),
+      m(marketKey, true),
+      m(lender, true),
+      m(ownerLoan, true),
+      m(liquidity, true),
+      m(market.loanMint),
+      m(authority),
+      m(loanProgram),
+    ];
+    if (market.rewardsEnabled) keys.push(m(rewards));
+    keys.push(m(SystemProgram.programId));
+    return tx.add(
+      pinocchioInstruction(
+        PINOCCHIO_TAG.supplyUsdc,
+        keys,
+        Buffer.concat([Buffer.from(pinocchioAmount(amount)), Buffer.from([lenderBump])]),
+        programId,
+      ),
+    );
+  }
+  if (input.action === "Withdraw") {
+    const keys = [
+      m(input.owner, false, true),
+      m(marketKey, true),
+      m(lender, true),
+      m(ownerLoan, true),
+      m(liquidity, true),
+      m(market.loanMint),
+      m(authority),
+      m(loanProgram),
+    ];
+    if (market.rewardsEnabled) keys.push(m(rewards));
+    return tx.add(
+      pinocchioInstruction(PINOCCHIO_TAG.withdrawUsdc, keys, pinocchioShares(amount), programId),
+    );
+  }
   if (input.action === "Deposit collateral")
-    return methods
-      .depositCollateral(amount)
-      .accountsPartial({
-        borrower: input.owner,
-        ...common,
-        borrowerPosition,
-        collateralMint,
-        borrowerCollateral: ownerCollateral,
-        collateralVault: account.collateralVault,
-        collateralTokenProgram,
-        systemProgram: SystemProgram.programId,
-      })
-      .transaction();
+    return tx.add(
+      pinocchioInstruction(
+        PINOCCHIO_TAG.depositCollateral,
+        [
+          m(input.owner, true, true),
+          m(marketKey),
+          m(borrower, true),
+          m(ownerCollateral, true),
+          m(collateralVault, true),
+          m(market.collateralMint),
+          m(authority),
+          m(collateralProgram),
+          m(SystemProgram.programId),
+        ],
+        Buffer.concat([Buffer.from(pinocchioAmount(amount)), Buffer.from([borrowerBump])]),
+        programId,
+      ),
+    );
   if (input.action === "Borrow")
-    return methods
-      .borrowUsdc(amount)
-      .accountsPartial({
-        borrower: input.owner,
-        globalConfig,
-        ...common,
-        borrowerPosition,
-        oracleConfiguration: account.oracleConfiguration,
-        oracleObservation: observation,
-        collateralMint,
-        loanMint,
-        borrowerUsdc: ownerLoan,
-        liquidityVault: account.liquidityVault,
-        loanTokenProgram,
-      })
-      .transaction();
+    return tx.add(
+      pinocchioInstruction(
+        PINOCCHIO_TAG.borrowUsdc,
+        [
+          m(input.owner, false, true),
+          m(global),
+          m(marketKey, true),
+          m(borrower, true),
+          m(ownerLoan, true),
+          m(liquidity, true),
+          m(market.loanMint),
+          m(market.collateralMint),
+          m(authority),
+          m(loanProgram),
+          m(collateralProgram),
+          m(oracle),
+          m(observation),
+        ],
+        pinocchioAmount(amount),
+        programId,
+      ),
+    );
   if (input.action === "Repay")
-    return methods
-      .repayUsdc(amount)
-      .accountsPartial({
-        payer: input.owner,
-        ...common,
-        borrowerPosition,
-        loanMint,
-        payerUsdc: ownerLoan,
-        liquidityVault: account.liquidityVault,
-        loanTokenProgram,
-      })
-      .transaction();
-  return methods
-    .liquidate(amount)
-    .accountsPartial({
-      liquidator: input.owner,
-      ...common,
-      borrowerPosition,
-      oracleConfiguration: account.oracleConfiguration,
-      oracleObservation: observation,
-      firstLossReserve: reserve,
-      loanMint,
-      collateralMint,
-      liquidatorUsdc: ownerLoan,
-      liquidatorCollateral: ownerCollateral,
-      liquidityVault: account.liquidityVault,
-      collateralVault: account.collateralVault,
-      reserveVault: account.reserveVault,
-      loanTokenProgram,
-      collateralTokenProgram,
-    })
-    .transaction();
+    return tx.add(
+      pinocchioInstruction(
+        PINOCCHIO_TAG.repayUsdc,
+        [
+          m(input.owner, false, true),
+          m(marketKey, true),
+          m(borrower, true),
+          m(ownerLoan, true),
+          m(liquidity, true),
+          m(market.loanMint),
+          m(authority),
+          m(loanProgram),
+        ],
+        pinocchioAmount(amount),
+        programId,
+      ),
+    );
+  return tx.add(
+    pinocchioInstruction(
+      PINOCCHIO_TAG.liquidate,
+      [
+        m(input.owner, false, true),
+        m(marketKey, true),
+        m(borrower, true),
+        m(ownerLoan, true),
+        m(ownerCollateral, true),
+        m(liquidity, true),
+        m(collateralVault, true),
+        m(reserve, true),
+        m(reserveVault, true),
+        m(market.loanMint),
+        m(market.collateralMint),
+        m(authority),
+        m(loanProgram),
+        m(collateralProgram),
+        m(oracle),
+        m(observation),
+      ],
+      pinocchioAmount(amount),
+      programId,
+    ),
+  );
 }

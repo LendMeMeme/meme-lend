@@ -8,6 +8,7 @@ pub const ORACLE_OBSERVATION_SEED: &[u8] = b"oracle-observation";
 pub const LENDER_POSITION_SEED: &[u8] = b"lender-position";
 pub const BORROWER_POSITION_SEED: &[u8] = b"borrower-position";
 pub const REWARDS_SEED: &[u8] = b"market-rewards";
+pub const REWARD_VAULT_SEED: &[u8] = b"reward-vault";
 pub const RESERVE_SEED: &[u8] = b"first-loss-reserve";
 pub const RESERVE_VAULT_SEED: &[u8] = b"reserve-vault";
 pub const ASSOCIATED_TOKEN_PROGRAM: Address =

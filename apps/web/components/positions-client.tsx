@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { BorshAccountsCoder, BN } from "@coral-xyz/anchor";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { borrowerPositionPda, lenderPositionPda, MEME_LEND_IDL } from "@meme-lend/sdk";
+import { useConnection, useWallet } from "@/components/wallet-context";
+import {
+  decodePinocchioBorrowerPosition,
+  decodePinocchioLenderPosition,
+  PINOCCHIO_PROGRAM_ID,
+  pinocchioPdas,
+} from "@meme-lend/sdk";
 import { PublicKey, type AccountInfo } from "@solana/web3.js";
 import { WalletControl } from "@/components/wallet-control";
 
@@ -12,7 +16,6 @@ interface PositionRow {
   collateralAmount: string;
   borrowShares: string;
 }
-const coder = new BorshAccountsCoder(MEME_LEND_IDL);
 export function PositionsClient({
   markets,
   unavailableReason,
@@ -35,12 +38,12 @@ export function PositionsClient({
     setState("loading");
     void (async () => {
       try {
-        const programId = new PublicKey(MEME_LEND_IDL.address);
+        const programId = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID ?? PINOCCHIO_PROGRAM_ID);
         const keys = markets.flatMap((text) => {
           const market = new PublicKey(text);
           return [
-            lenderPositionPda(programId, market, publicKey)[0],
-            borrowerPositionPda(programId, market, publicKey)[0],
+            pinocchioPdas.lenderPosition(market, publicKey, programId)[0],
+            pinocchioPdas.borrowerPosition(market, publicKey, programId)[0],
           ];
         });
         const infos: Array<AccountInfo<Buffer> | null> = [];
@@ -54,18 +57,11 @@ export function PositionsClient({
         const next = markets.flatMap((market, index) => {
           const lenderInfo = infos[index * 2],
             borrowerInfo = infos[index * 2 + 1];
-          const lender = lenderInfo
-            ? (coder.decode("lenderPosition", lenderInfo.data) as { supplyShares: BN })
-            : null;
-          const borrower = borrowerInfo
-            ? (coder.decode("borrowerPosition", borrowerInfo.data) as {
-                collateralAmount: BN;
-                borrowShares: BN;
-              })
-            : null;
+          const lender = lenderInfo ? decodePinocchioLenderPosition(lenderInfo.data) : null;
+          const borrower = borrowerInfo ? decodePinocchioBorrowerPosition(borrowerInfo.data) : null;
           if (
-            (!lender || lender.supplyShares.isZero()) &&
-            (!borrower || (borrower.collateralAmount.isZero() && borrower.borrowShares.isZero()))
+            (!lender || lender.supplyShares === 0n) &&
+            (!borrower || (borrower.collateralAmount === 0n && borrower.borrowShares === 0n))
           )
             return [];
           return [

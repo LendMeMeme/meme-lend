@@ -96,7 +96,7 @@ async function ingestSignature(
     maxSupportedTransactionVersion: 0,
   });
   if (!tx) return;
-  const records = eventRecords(info, tx);
+  const records = eventRecords(info, tx, programId);
   for (const record of records) await database.upsertTransaction(record);
   for (const market of new Set(records.flatMap((record) => (record.market ? [record.market] : []))))
     await refreshMarket(connection, database, market, info.slot);

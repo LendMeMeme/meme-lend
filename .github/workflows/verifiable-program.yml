@@ -33,13 +33,25 @@ jobs:
       - name: Build in Anchor's reproducible container
         run: anchor build --verifiable
 
+      - name: Install pinned Agave toolchain
+        run: sh -c "$(curl -sSfL https://release.anza.xyz/v4.2.1/install)"
+
+      - name: Build optimized Pinocchio program
+        run: |
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+          cargo build-sbf --manifest-path programs/meme_lending_pinocchio/Cargo.toml \
+            --features bpf-entrypoint --sbf-out-dir target/verifiable
+
       - name: Verify embedded security metadata
         run: |
           cargo install query-security-txt --locked
-          query-security-txt target/verifiable/meme_lending.so | tee target/verifiable/security.txt
+          query-security-txt target/verifiable/meme_lending.so | tee target/verifiable/security-anchor.txt
+          query-security-txt target/verifiable/meme_lending_pinocchio.so | tee target/verifiable/security-pinocchio.txt
 
       - name: Record binary digest
-        run: sha256sum target/verifiable/meme_lending.so | tee target/verifiable/meme_lending.so.sha256
+        run: |
+          sha256sum target/verifiable/meme_lending.so | tee target/verifiable/meme_lending.so.sha256
+          sha256sum target/verifiable/meme_lending_pinocchio.so | tee target/verifiable/meme_lending_pinocchio.so.sha256
 
       - uses: actions/upload-artifact@v6
         with:
@@ -47,7 +59,10 @@ jobs:
           path: |
             target/verifiable/meme_lending.so
             target/verifiable/meme_lending.so.sha256
-            target/verifiable/security.txt
+            target/verifiable/meme_lending_pinocchio.so
+            target/verifiable/meme_lending_pinocchio.so.sha256
+            target/verifiable/security-anchor.txt
+            target/verifiable/security-pinocchio.txt
             target/idl/meme_lending.json
           if-no-files-found: error
           retention-days: 90

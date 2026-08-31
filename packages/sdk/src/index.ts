@@ -1,6 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
 export { createMemeLendProgram, MEME_LEND_IDL } from "./program.js";
 export type { MemeLending } from "./idl/meme_lending.js";
+export * from "./pinocchio.js";
+export * from "./token.js";
 
 export const RATE_SCALE = 1_000_000_000_000_000_000n;
 export const BPS = 10_000n;

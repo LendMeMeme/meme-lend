@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { Wallet } from "@coral-xyz/anchor";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Transaction } from "@solana/web3.js";
 import { buildCreateMarketTransaction, type RATE_MODELS } from "@/lib/transactions";
 
@@ -10,7 +9,7 @@ export function CreateMarketForm() {
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
   const [oraclePublisher, setOraclePublisher] = useState("");
-  const [lltvBps, setLltvBps] = useState<5000 | 6500 | 7500>(5000);
+  const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(5000);
   const [rateModel, setRateModel] = useState<keyof typeof RATE_MODELS>("conservative");
   const [marketCap, setMarketCap] = useState("");
   const [walletCap, setWalletCap] = useState("");
@@ -41,7 +40,6 @@ export function CreateMarketForm() {
         walletBorrowCap: walletCap,
         owner: wallet.publicKey,
         connection,
-        wallet: wallet as unknown as Wallet,
       });
       const latest = await connection.getLatestBlockhash("confirmed");
       result.transaction.feePayer = wallet.publicKey;
@@ -118,13 +116,13 @@ export function CreateMarketForm() {
           id="lltv"
           value={lltvBps}
           onChange={(e) => {
-            setLltvBps(Number(e.target.value) as 5000 | 6500 | 7500);
+            setLltvBps(Number(e.target.value) as 3000 | 4000 | 5000 | 6000 | 6500);
             resetReview();
           }}
         >
           <option value={5000}>50% — conservative preset</option>
           <option value={6500}>65% — standard preset</option>
-          <option value={7500}>75% — high-risk preset</option>
+          <option value={6000}>60% — higher leverage</option>
         </select>
       </div>
       <div className="field">

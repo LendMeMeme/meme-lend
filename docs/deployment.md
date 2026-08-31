@@ -1,5 +1,20 @@
 # Deployment and operations
 
+## Mainnet deployment
+
+- Program: `FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX`
+- Program-data account: `9tuptzScxeBd88WBpwtmxudF3GC2NDpZ7EhNXjEeyVdL`
+- Upgrade authority: `5o32MNK5Fs6bW8g8H63z91gUn5E7XJJaFkZvXd4mAh5t`
+- Deployment slot: `443233025`
+- Deployment transaction: `2PpJXCJ38iQTxKLPCpYAye8YLEKQ4kzWzbRndBQDXKZYQ1MMT7x7yea46rgUdf6XXyWTDVvNsT36kPDAww7ncrW4`
+- Release ELF: 146,088 bytes, SHA-256
+  `7FB437024FB951BEE5E3737E1DA8F4EAAA679BEE3AE2805D8E7DC8E94C58E049`
+- Program-data allocation: 292,176 bytes; the release ELF matches the on-chain prefix exactly and
+  all remaining upgrade-capacity bytes are zero.
+
+Deployment does not initialize the global protocol configuration. Initialization requires
+separately verified target-cluster loan-mint and fee-recipient inputs.
+
 ## Railway services
 
 The repository-level `railpack.json` deliberately forces Railpack's Node provider. The monorepo
@@ -19,17 +34,20 @@ root directory. Verify that every deployment plan includes Node and pnpm before 
 
 ## Current readiness boundary
 
-Native Rust, TypeScript, indexer/SDK tests, and the Next.js production build are verified locally.
-GitHub Actions produces the SBF artifact with Anchor 0.31.1's reproducible container, extracts its
-embedded security metadata, records its SHA-256 digest, and publishes the generated IDL with the
-artifact. A new successful reproducible build is required for every program change. Local-validator
-transaction tests must still pass against that exact release before deployment.
+Native Rust, TypeScript, indexer/SDK tests, the optimized SBF ELF execution test, and the Next.js
+production build are verified locally. GitHub Actions produces both the Anchor reference artifact
+and the active Pinocchio deployment candidate, extracts their embedded security metadata, records
+SHA-256 digests, and publishes them together. A new successful reproducible build is required for
+every program change.
 
-Native Pyth, Switchboard, and DEX adapter parsers are also a launch blocker; see `oracle-policy.md`.
+The active optimized release currently accepts only its explicitly configured signed observation
+source. Native Pyth, Switchboard, and DEX adapters must not be advertised as active; see
+`oracle-policy.md`.
 
 ## Pre-deployment checklist
 
-- All native, SBF, local-validator, TypeScript, frontend, and adversarial gates pass.
+- All native, SBF/ELF, TypeScript, frontend, and adversarial gates pass on the release revision.
+- The exact release artifact passes a funded target-cluster smoke test before public deposits open.
 - Program ID, IDL address, SDK constant, service variables, and explorer links match.
 - Build is reproducible and its binary hash is published.
 - Independent audit findings are resolved or explicitly accepted.
@@ -57,7 +75,7 @@ deployment.
 
 ## Rollout
 
-Deploy the binary, verify its buffer and authority, initialize the approved USDC configuration,
+Deploy `meme_lending_pinocchio.so`, verify its buffer and authority, initialize the approved USDC configuration,
 start the finalized indexer, then create a capped test market. Exercise supply, collateral, borrow,
 repay, withdraw, liquidation, reserve, reward, and fee flows before public discovery is enabled.
 

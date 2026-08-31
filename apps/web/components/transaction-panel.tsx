@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import type { Wallet } from "@coral-xyz/anchor";
+import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Transaction } from "@solana/web3.js";
 import { buildMarketTransaction, type MarketAction } from "@/lib/transactions";
 type Action = MarketAction;
@@ -41,7 +40,6 @@ export function TransactionPanel({
         market: selectedMarket,
         owner: publicKey,
         connection,
-        wallet: wallet as unknown as Wallet,
         borrower: borrower || undefined,
       });
       const latest = await connection.getLatestBlockhash("confirmed");
