@@ -3,9 +3,9 @@ use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-const PROGRAM_ID: Pubkey = solana_pubkey::pubkey!("FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX");
+const PROGRAM_ID: Pubkey = solana_pubkey::pubkey!("8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym");
 const INITIAL_AUTHORITY: Pubkey =
-    solana_pubkey::pubkey!("5o32MNK5Fs6bW8g8H63z91gUn5E7XJJaFkZvXd4mAh5t");
+    solana_pubkey::pubkey!("C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi");
 const SYSTEM_PROGRAM: Pubkey = solana_pubkey::pubkey!("11111111111111111111111111111111");
 const NATIVE_LOADER: Pubkey = solana_pubkey::pubkey!("NativeLoader1111111111111111111111111111111");
 

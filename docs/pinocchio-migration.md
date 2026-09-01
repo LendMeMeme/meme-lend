@@ -33,4 +33,4 @@ above pass and the exact release binary has a target-cluster smoke test.
   decoding or serialization.
 - Lending arithmetic matches the reference program's conservative rounding test vectors.
 
-Optimized program ID: `FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX`.
+Optimized program ID: `8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`.

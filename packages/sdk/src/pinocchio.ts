@@ -1,6 +1,6 @@
 import { PublicKey, TransactionInstruction, type AccountMeta } from "@solana/web3.js";
 
-export const PINOCCHIO_PROGRAM_ID = new PublicKey("FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX");
+export const PINOCCHIO_PROGRAM_ID = new PublicKey("8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym");
 export const PINOCCHIO_MARKET_LEN = 260;
 export const PINOCCHIO_GLOBAL_CONFIG_LEN = 144;
 

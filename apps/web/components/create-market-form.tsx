@@ -28,8 +28,7 @@ async function confirmOrReconcile(
       const status = (
         await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })
       ).value[0];
-      if (status?.err)
-        throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      if (status?.err) throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
       if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized")
         return;
     }
@@ -108,9 +107,7 @@ export function CreateMarketForm() {
       const liquidityBlockhash = await connection.getLatestBlockhash("confirmed");
       result.liquidityTransaction.feePayer = wallet.publicKey;
       result.liquidityTransaction.recentBlockhash = liquidityBlockhash.blockhash;
-      const liquiditySimulation = await connection.simulateTransaction(
-        result.liquidityTransaction,
-      );
+      const liquiditySimulation = await connection.simulateTransaction(result.liquidityTransaction);
       if (liquiditySimulation.value.err) {
         const logs = liquiditySimulation.value.logs?.slice(-6).join("\n");
         throw new Error(
@@ -284,7 +281,7 @@ export function CreateMarketForm() {
               ? "Approve market creation…"
               : status === "seeding"
                 ? "Approve initial USDC supply…"
-              : status === "confirmed"
+                : status === "confirmed"
                   ? "Market confirmed"
                   : "Launch market"}
       </button>

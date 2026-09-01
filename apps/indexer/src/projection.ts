@@ -16,8 +16,20 @@ const TOKEN_2022 = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const ASSOCIATED = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 const RATE_SCALE = 1_000_000_000_000_000_000n;
 const RATE_MODELS = [
-  { base: 20_000_000_000_000_000n, targetBps: 8_000n, low: 180_000_000_000_000_000n, high: 2_000_000_000_000_000_000n, max: 2_200_000_000_000_000_000n },
-  { base: 50_000_000_000_000_000n, targetBps: 7_000n, low: 250_000_000_000_000_000n, high: 3_000_000_000_000_000_000n, max: 3_300_000_000_000_000_000n },
+  {
+    base: 20_000_000_000_000_000n,
+    targetBps: 8_000n,
+    low: 180_000_000_000_000_000n,
+    high: 2_000_000_000_000_000_000n,
+    max: 2_200_000_000_000_000_000n,
+  },
+  {
+    base: 50_000_000_000_000_000n,
+    targetBps: 7_000n,
+    low: 250_000_000_000_000_000n,
+    high: 3_000_000_000_000_000_000n,
+    max: 3_300_000_000_000_000_000n,
+  },
 ] as const;
 
 function annualRates(market: ReturnType<typeof decodePinocchioMarket>, utilization: bigint) {

@@ -11,18 +11,18 @@ pub mod pda;
 pub mod state;
 pub mod validation;
 
-solana_address::declare_id!("FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX");
+solana_address::declare_id!("8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym");
 pub const INITIAL_AUTHORITY: pinocchio::Address =
-    pinocchio::Address::from_str_const("5o32MNK5Fs6bW8g8H63z91gUn5E7XJJaFkZvXd4mAh5t");
+    pinocchio::Address::from_str_const("C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi");
 
 #[cfg(feature = "bpf-entrypoint")]
 solana_security_txt::security_txt! {
     name: "Meme Lend (Pinocchio)",
     project_url: "https://meme-lendweb-production.up.railway.app",
-    contacts: "link:https://github.com/CryptoDungeonMaster/meme-lend/security/advisories/new",
-    policy: "https://github.com/CryptoDungeonMaster/meme-lend/blob/main/SECURITY.md",
+    contacts: "link:https://github.com/LendMeMeme/meme-lend/security/advisories/new",
+    policy: "https://github.com/LendMeMeme/meme-lend/blob/main/SECURITY.md",
     preferred_languages: "en",
-    source_code: "https://github.com/CryptoDungeonMaster/meme-lend"
+    source_code: "https://github.com/LendMeMeme/meme-lend"
 }
 
 #[cfg(feature = "bpf-entrypoint")]

@@ -11,11 +11,11 @@ After the approved mainnet upgrade authority deploys the exact Pinocchio artifac
 executable and compare it byte-for-byte with the published workflow artifact:
 
 ```sh
-solana program dump FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX deployed.so \
+solana program dump 8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym deployed.so \
   --url mainnet-beta
 sha256sum deployed.so target/verifiable/meme_lending_pinocchio.so
 npx @solana-program/program-metadata@latest write security \
-  FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX metadata/security.json \
+  8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym metadata/security.json \
   --rpc "$SOLANA_RPC_HTTP"
 ```
 

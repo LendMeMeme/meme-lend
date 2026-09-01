@@ -27,8 +27,10 @@ const isMarket = (value: unknown): value is MarketView =>
   value !== null &&
   typeof (value as { address?: unknown }).address === "string";
 
-export const getMarkets = () => indexed<MarketView[]>("/markets", (value): value is MarketView[] =>
-  Array.isArray(value) && value.every(isMarket),
-);
+export const getMarkets = () =>
+  indexed<MarketView[]>(
+    "/markets",
+    (value): value is MarketView[] => Array.isArray(value) && value.every(isMarket),
+  );
 export const getMarket = (address: string) =>
   indexed<MarketView>(`/markets/${encodeURIComponent(address)}`, isMarket);

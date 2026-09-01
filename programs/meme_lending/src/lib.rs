@@ -11,10 +11,10 @@ use spl_token_2022::extension::{BaseStateWithExtensions, StateWithExtensions};
 solana_security_txt::security_txt! {
     name: "Meme Lend",
     project_url: "https://meme-lendweb-production.up.railway.app",
-    contacts: "link:https://github.com/CryptoDungeonMaster/meme-lend/security/advisories/new",
-    policy: "https://github.com/CryptoDungeonMaster/meme-lend/blob/main/SECURITY.md",
+    contacts: "link:https://github.com/LendMeMeme/meme-lend/security/advisories/new",
+    policy: "https://github.com/LendMeMeme/meme-lend/blob/main/SECURITY.md",
     preferred_languages: "en",
-    source_code: "https://github.com/CryptoDungeonMaster/meme-lend"
+    source_code: "https://github.com/LendMeMeme/meme-lend"
 }
 
 #[cfg(all(test, not(feature = "no-entrypoint")))]

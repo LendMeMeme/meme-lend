@@ -29,7 +29,7 @@ const connection = new Connection(
   "confirmed",
 );
 const programId = new PublicKey(
-  process.env.PROGRAM_ID ?? "FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX",
+  process.env.PROGRAM_ID ?? "8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym",
 );
 const interval = Number(process.env.POLL_INTERVAL_MS ?? "5000");
 const maxRepay = BigInt(process.env.MAX_REPAY_USDC_UNITS ?? "18446744073709551615");

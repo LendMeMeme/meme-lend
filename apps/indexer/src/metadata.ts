@@ -4,7 +4,10 @@ const METADATA_PROGRAM = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518
 
 function borshString(data: Uint8Array, offset: number): [string, number] {
   if (offset + 4 > data.length) throw new Error("Invalid metadata string length");
-  const length = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(offset, true);
+  const length = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(
+    offset,
+    true,
+  );
   const start = offset + 4,
     end = start + length;
   if (end > data.length || length > 256) throw new Error("Invalid metadata string");

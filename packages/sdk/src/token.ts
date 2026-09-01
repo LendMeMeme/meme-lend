@@ -15,9 +15,7 @@ export function validateSupportedMintData(
     throw new Error(`${label} address is not an initialized token mint`);
   }
   if (tokenProgram.equals(TOKEN_2022_PROGRAM_ID) && data.length > 82) {
-    throw new Error(
-      `${label} uses Token-2022 extensions that this protocol does not support`,
-    );
+    throw new Error(`${label} uses Token-2022 extensions that this protocol does not support`);
   }
   return data[44];
 }

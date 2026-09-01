@@ -33,7 +33,9 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
               <td>
                 <Link href={`/markets/${m.address}`}>
                   <strong>
-                    {m.collateralSymbol ?? `${m.collateralMint.slice(0, 4)}…${m.collateralMint.slice(-4)}`} / USDC
+                    {m.collateralSymbol ??
+                      `${m.collateralMint.slice(0, 4)}…${m.collateralMint.slice(-4)}`}{" "}
+                    / USDC
                   </strong>
                   {m.collateralName ? <small>{m.collateralName}</small> : null}
                 </Link>
