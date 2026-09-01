@@ -46,16 +46,33 @@ export function publisherConfig() {
   };
 }
 
-function parseFeedMap(raw: string | undefined): ReadonlyMap<string, string> {
+export function parseFeedMap(raw: string | undefined): ReadonlyMap<string, string> {
   if (!raw) return new Map();
-  const value = JSON.parse(raw) as unknown;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      'PYTH_FEED_MAP_JSON must be valid JSON, for example {"<collateral-mint>":"<pyth-feed-id>"}',
+    );
+  }
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("PYTH_FEED_MAP_JSON must be an object keyed by collateral mint");
   return new Map(
-    Object.entries(value).map(([mint, feed]) => [
-      new PublicKey(mint).toBase58(),
-      String(feed).replace(/^0x/, ""),
-    ]),
+    Object.entries(value).map(([mint, feed]) => {
+      let normalizedMint: string;
+      try {
+        normalizedMint = new PublicKey(mint.trim()).toBase58();
+      } catch {
+        throw new Error(`PYTH_FEED_MAP_JSON contains an invalid collateral mint: ${mint}`);
+      }
+      const normalizedFeed = String(feed).trim().replace(/^0x/, "");
+      if (!/^[0-9a-fA-F]{64}$/.test(normalizedFeed))
+        throw new Error(
+          `PYTH_FEED_MAP_JSON contains an invalid Pyth feed ID for ${normalizedMint}`,
+        );
+      return [normalizedMint, normalizedFeed];
+    }),
   );
 }
 
