@@ -22,7 +22,7 @@ const USDC = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const rpc = process.env.SOLANA_RPC_HTTP ?? "https://api.mainnet-beta.solana.com";
 const keypairPath =
   process.env.INITIALIZE_KEYPAIR_PATH ??
-  resolve(homedir(), ".config", "solana", "lend-protocol-mainnet-deployer.json");
+  resolve(homedir(), ".config", "solana", "lend-meme-loans-mainnet-v2-deployer.json");
 const signer = Keypair.fromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8"))),
 );
