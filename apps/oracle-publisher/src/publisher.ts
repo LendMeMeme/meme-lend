@@ -220,6 +220,13 @@ export async function publishMarket(
       ? oracle.sources[1]
       : oracle.sources[0];
   if (!latestExpectedPublisher?.equals(signer.publicKey)) return null;
+  if (prior?.publisher.equals(PublicKey.default) && !latestStale) {
+    const crossPublisherDeviation = oraclePriceDeviationBps(prior.price, price);
+    if (crossPublisherDeviation > oracle.maxDeviationBps)
+      throw new Error(
+        `Primary and backup publisher prices disagree by ${crossPublisherDeviation} bps, above this market's immutable ${oracle.maxDeviationBps} bps limit`,
+      );
+  }
 
   const payload = encodePinocchioOracleObservation({
     price,
@@ -268,4 +275,11 @@ export function usdPriceToOracle(priceUsd: number, decimals: number): bigint {
     throw new Error("Invalid oracle price conversion");
   const [whole, fraction = ""] = priceUsd.toFixed(decimals).split(".");
   return BigInt(whole!) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"));
+}
+
+export function oraclePriceDeviationBps(left: bigint, right: bigint): number {
+  const denominator = left < right ? left : right;
+  if (denominator <= 0n) throw new Error("Cannot compare a zero oracle price");
+  const difference = left > right ? left - right : right - left;
+  return Number((difference * 10_000n + denominator - 1n) / denominator);
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { effectiveRefreshLead, publishingPriority, shouldStartOracleRefresh } from "./publisher.js";
+import {
+  effectiveRefreshLead,
+  oraclePriceDeviationBps,
+  publishingPriority,
+  shouldStartOracleRefresh,
+} from "./publisher.js";
 
 describe("two-publisher refresh scheduling", () => {
   it("keeps a confirmed observation usable for most of its valid lifetime", () => {
@@ -15,6 +20,18 @@ describe("two-publisher refresh scheduling", () => {
   it("reserves enough confirmation time for short immutable windows", () => {
     expect(effectiveRefreshLead(60, 20)).toBe(40);
     expect(effectiveRefreshLead(120, 20)).toBe(80);
+  });
+});
+
+describe("cross-publisher price diagnostics", () => {
+  it("rounds disagreement conservatively in basis points", () => {
+    expect(oraclePriceDeviationBps(100n, 105n)).toBe(500);
+    expect(oraclePriceDeviationBps(100n, 101n)).toBe(100);
+    expect(oraclePriceDeviationBps(101n, 100n)).toBe(100);
+  });
+
+  it("rejects a zero comparison price", () => {
+    expect(() => oraclePriceDeviationBps(0n, 100n)).toThrow("zero oracle price");
   });
 });
 
