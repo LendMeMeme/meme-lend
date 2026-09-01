@@ -27,12 +27,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install the pinned Anchor CLI
-        run: cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
-
-      - name: Build in Anchor's reproducible container
-        run: anchor build --verifiable
-
       - name: Install pinned Agave toolchain
         run: sh -c "$(curl -sSfL https://release.anza.xyz/v4.2.1/install)"
 
@@ -45,24 +39,18 @@ jobs:
       - name: Verify embedded security metadata
         run: |
           cargo install query-security-txt --locked
-          query-security-txt target/verifiable/meme_lending.so | tee target/verifiable/security-anchor.txt
           query-security-txt target/verifiable/meme_lending_pinocchio.so | tee target/verifiable/security-pinocchio.txt
 
       - name: Record binary digest
         run: |
-          sha256sum target/verifiable/meme_lending.so | tee target/verifiable/meme_lending.so.sha256
           sha256sum target/verifiable/meme_lending_pinocchio.so | tee target/verifiable/meme_lending_pinocchio.so.sha256
 
       - uses: actions/upload-artifact@v6
         with:
           name: meme-lending-verifiable-${{ github.sha }}
           path: |
-            target/verifiable/meme_lending.so
-            target/verifiable/meme_lending.so.sha256
             target/verifiable/meme_lending_pinocchio.so
             target/verifiable/meme_lending_pinocchio.so.sha256
-            target/verifiable/security-anchor.txt
             target/verifiable/security-pinocchio.txt
-            target/idl/meme_lending.json
           if-no-files-found: error
           retention-days: 90

@@ -2,14 +2,15 @@
 
 ## Mainnet deployment
 
-- Program: `FvnWFJpAfdps7tTYzcg2ByKHufRxN7RyiLni1oB3jFaX`
-- Program-data account: `9tuptzScxeBd88WBpwtmxudF3GC2NDpZ7EhNXjEeyVdL`
-- Upgrade authority: `5o32MNK5Fs6bW8g8H63z91gUn5E7XJJaFkZvXd4mAh5t`
-- Deployment slot: `443233025`
-- Deployment transaction: `2PpJXCJ38iQTxKLPCpYAye8YLEKQ4kzWzbRndBQDXKZYQ1MMT7x7yea46rgUdf6XXyWTDVvNsT36kPDAww7ncrW4`
-- Release ELF: 146,088 bytes, SHA-256
-  `7FB437024FB951BEE5E3737E1DA8F4EAAA679BEE3AE2805D8E7DC8E94C58E049`
-- Program-data allocation: 292,176 bytes; the release ELF matches the on-chain prefix exactly and
+- Program: `8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
+- Program-data account: `GAWfb2YEN4CYsuUTQKT5Mwrb27XvKddjUgT5BHxjruVg`
+- Upgrade authority: `C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi`
+- Deployment slot: `443374997`
+- Deployment transaction: `3eKgxAPV2iVyFzNzq4A1tJ2sR8TqhrS54triC1veymdUUA4iek8XyC3JNZPw7j6o4ZFfEeZBexDsGRCRnMCjfLeC`
+- Release source revision: `897d700ac9dc5895aac4a41ccbb545d9ee38c777`
+- Release ELF: 146,056 bytes, SHA-256
+  `0fda8437ad849fd9509f1f2b18d490f9e273e145b5db53ccbc22bd81b8883576`
+- Program-data allocation: 292,112 bytes; the release ELF matches the on-chain prefix exactly and
   all remaining upgrade-capacity bytes are zero.
 
 Deployment does not initialize the global protocol configuration. Initialization requires
@@ -40,10 +41,10 @@ or `NEXT_PUBLIC_SOLANA_RPC_WS` variables.
 ## Current readiness boundary
 
 Native Rust, TypeScript, indexer/SDK tests, the optimized SBF ELF execution test, and the Next.js
-production build are verified locally. GitHub Actions produces both the Anchor reference artifact
-and the active Pinocchio deployment candidate, extracts their embedded security metadata, records
-SHA-256 digests, and publishes them together. A new successful reproducible build is required for
-every program change.
+production build are verified locally. GitHub Actions produces the active Pinocchio deployment
+candidate, extracts its embedded security metadata, records its SHA-256 digest, and publishes them
+together. The legacy Anchor reference remains covered by CI but is not a release artifact. A new
+successful reproducible build is required for every program change.
 
 The active optimized release currently accepts only its explicitly configured signed observation
 source. Native Pyth, Switchboard, and DEX adapters must not be advertised as active; see

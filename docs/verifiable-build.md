@@ -1,8 +1,9 @@
 # Verifiable program release
 
-The release workflow builds the Anchor reference and the active optimized
-`meme_lending_pinocchio.so` with pinned toolchains. It extracts each embedded `security.txt` and
-publishes both binaries and SHA-256 digests as one GitHub Actions artifact.
+The release workflow builds the active optimized `meme_lending_pinocchio.so` with the pinned Agave
+toolchain. It extracts the embedded `security.txt` and publishes the binary and SHA-256 digest as a
+GitHub Actions artifact. The legacy Anchor reference is tested by CI but is not a deployment or
+release artifact.
 
 Before deployment, publish the exact source revision and build artifact. A private repository cannot
 be independently rebuilt by the public and therefore cannot support a public verification claim.
