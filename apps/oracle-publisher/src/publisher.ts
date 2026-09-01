@@ -4,6 +4,7 @@ import {
   decodePinocchioOracleObservation,
   encodePinocchioOracleObservation,
   PINOCCHIO_MARKET_LEN,
+  PINOCCHIO_MARKET_V1_LEN,
   PINOCCHIO_TAG,
   pinocchioInstruction,
   pinocchioPdas,
@@ -92,10 +93,15 @@ export async function publishAll(
   failures: Array<{ market: string; error: string }>;
   discovered: number;
 }> {
-  const accounts = await connection.getProgramAccounts(config.programId, {
-    commitment: "confirmed",
-    filters: [{ dataSize: PINOCCHIO_MARKET_LEN }],
-  });
+  const accountBatches = await Promise.all(
+    [...new Set([PINOCCHIO_MARKET_V1_LEN, PINOCCHIO_MARKET_LEN])].map((dataSize) =>
+      connection.getProgramAccounts(config.programId, {
+        commitment: "confirmed",
+        filters: [{ dataSize }],
+      }),
+    ),
+  );
+  const accounts = accountBatches.flat();
   const ordered = await prioritizedAccounts(connection, signer, config, accounts);
   const published: PublishOutcome[] = [];
   const failures: Array<{ market: string; error: string }> = [];
@@ -156,7 +162,11 @@ export async function publishMarket(
     prior &&
     !prior.publisher.equals(PublicKey.default) &&
     !priorStale &&
-    !shouldStartOracleRefresh(priorAge!, oracle.maxAgeSeconds, config.refreshLeadSeconds)
+    !shouldStartOracleRefresh(
+      priorAge!,
+      oracle.maxAgeSeconds,
+      effectiveRefreshLead(oracle.maxAgeSeconds, config.refreshLeadSeconds),
+    )
   )
     return null;
   const expectedPublisher =
@@ -247,6 +257,10 @@ export function shouldStartOracleRefresh(
   refreshLeadSeconds: number,
 ): boolean {
   return observationAgeSeconds >= Math.max(0, maxAgeSeconds - refreshLeadSeconds);
+}
+
+export function effectiveRefreshLead(maxAgeSeconds: number, configuredLeadSeconds: number): number {
+  return Math.max(configuredLeadSeconds, Math.floor((maxAgeSeconds * 2) / 3));
 }
 
 export function usdPriceToOracle(priceUsd: number, decimals: number): bigint {

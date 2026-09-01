@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publishingPriority, shouldStartOracleRefresh } from "./publisher.js";
+import { effectiveRefreshLead, publishingPriority, shouldStartOracleRefresh } from "./publisher.js";
 
 describe("two-publisher refresh scheduling", () => {
   it("keeps a confirmed observation usable for most of its valid lifetime", () => {
@@ -10,6 +10,11 @@ describe("two-publisher refresh scheduling", () => {
   it("starts a replacement round before the observation expires", () => {
     expect(shouldStartOracleRefresh(40, 60, 20)).toBe(true);
     expect(shouldStartOracleRefresh(60, 60, 20)).toBe(true);
+  });
+
+  it("reserves enough confirmation time for short immutable windows", () => {
+    expect(effectiveRefreshLead(60, 20)).toBe(40);
+    expect(effectiveRefreshLead(120, 20)).toBe(80);
   });
 });
 

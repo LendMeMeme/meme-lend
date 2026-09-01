@@ -222,7 +222,7 @@ export async function buildCreateMarketTransaction(input: {
     rateCurve: input.rateCurve,
     marketBorrowCap,
     walletBorrowCap,
-    oracleMaxAgeSeconds: Math.min(global.maxOracleAgeSeconds, 60),
+    oracleMaxAgeSeconds: global.maxOracleAgeSeconds,
     oracleMaxConfidenceBps: 500,
     oracleMaxDeviationBps: 1000,
     oraclePriceDecimals: 18,
