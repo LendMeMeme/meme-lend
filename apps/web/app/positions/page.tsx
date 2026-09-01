@@ -9,20 +9,19 @@ export const metadata: Metadata = {
 
 export default async function PositionsPage() {
   const markets = await getMarkets();
-  const addresses = markets.state === "ready" ? markets.data.map((market) => market.address) : [];
+  const discoveredMarkets = markets.state === "ready" ? markets.data : [];
   return (
     <main className="shell">
       <header className="page-head">
         <div className="eyebrow">Portfolio</div>
-        <h1>My positions.</h1>
+        <h1>My money.</h1>
         <p className="lede">
-          Balances are decoded from market PDAs on Solana; indexed markets are used only for
-          discovery.
+          See what you lent, what you borrowed, and the collateral keeping your loan safe.
         </p>
       </header>
       <section className="section">
         <PositionsClient
-          markets={addresses}
+          markets={discoveredMarkets}
           unavailableReason={markets.state === "unavailable" ? markets.reason : undefined}
         />
       </section>

@@ -698,6 +698,29 @@ tbody tr:hover {
   grid-template-columns: minmax(230px, 0.7fr) minmax(360px, 1.3fr);
   min-height: 500px;
 }
+.benefit-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.benefit-strip > div {
+  display: grid;
+  gap: 5px;
+  padding: 18px 24px;
+  background: var(--green-soft);
+}
+.benefit-strip strong { color: var(--green-strong); }
+.benefit-strip span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.position-grid { display: grid; gap: 18px; }
+.position-card { display: grid; gap: 22px; padding: 26px; }
+.position-card h2 { margin: 5px 0 0; }
+.position-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.position-facts > div { display: grid; gap: 8px; padding: 16px; border-radius: 14px; background: var(--surface-soft); border: 1px solid var(--line); }
+.position-facts span { color: var(--muted); font-size: 12px; }
+.position-facts strong { font-size: 18px; }
+.position-card .button { justify-self: start; }
 .market-action-menu {
   padding: 26px 18px;
   border-right: 1px solid var(--line);
@@ -844,6 +867,8 @@ tbody tr:hover {
   .market-workspace-body {
     grid-template-columns: 1fr;
   }
+  .benefit-strip,
+  .position-facts { grid-template-columns: 1fr; }
   .market-action-menu {
     border-right: 0;
     border-bottom: 1px solid var(--line);

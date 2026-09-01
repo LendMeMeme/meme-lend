@@ -4,23 +4,37 @@ import { useConnection, useWallet } from "@/components/wallet-context";
 import {
   decodePinocchioBorrowerPosition,
   decodePinocchioLenderPosition,
+  decodePinocchioMarket,
+  associatedTokenAddress,
   PINOCCHIO_PROGRAM_ID,
   pinocchioPdas,
 } from "@meme-lend/sdk";
 import { PublicKey, type AccountInfo } from "@solana/web3.js";
 import { WalletControl } from "@/components/wallet-control";
+import type { MarketView } from "@meme-lend/shared";
 
 interface PositionRow {
   market: string;
-  supplyShares: string;
-  collateralAmount: string;
-  borrowShares: string;
+  label: string;
+  supplied: string;
+  collateral: string;
+  borrowed: string;
 }
+
+const formatUnits = (value: bigint, decimals: number) => {
+  const base = 10n ** BigInt(decimals),
+    whole = value / base,
+    fraction = (value % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction.slice(0, 6)}` : whole.toString();
+};
+
+const divideUp = (numerator: bigint, denominator: bigint) =>
+  numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator;
 export function PositionsClient({
   markets,
   unavailableReason,
 }: {
-  markets: string[];
+  markets: MarketView[];
   unavailableReason?: string;
 }) {
   const { publicKey } = useWallet();
@@ -39,11 +53,18 @@ export function PositionsClient({
     void (async () => {
       try {
         const programId = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID ?? PINOCCHIO_PROGRAM_ID);
-        const keys = markets.flatMap((text) => {
-          const market = new PublicKey(text);
+        const marketKeys = markets.map((market) => new PublicKey(market.address));
+        const marketInfos = await connection.getMultipleAccountsInfo(marketKeys, "confirmed");
+        const decoded = marketInfos.map((info) => (info ? decodePinocchioMarket(info.data) : null));
+        const keys = marketKeys.flatMap((market, index) => {
+          const state = decoded[index];
+          if (!state) return [];
+          const [authority] = pinocchioPdas.marketAuthority(market, programId);
           return [
             pinocchioPdas.lenderPosition(market, publicKey, programId)[0],
             pinocchioPdas.borrowerPosition(market, publicKey, programId)[0],
+            associatedTokenAddress(state.loanMint, authority),
+            state.collateralMint,
           ];
         });
         const infos: Array<AccountInfo<Buffer> | null> = [];
@@ -55,8 +76,12 @@ export function PositionsClient({
             )),
           );
         const next = markets.flatMap((market, index) => {
-          const lenderInfo = infos[index * 2],
-            borrowerInfo = infos[index * 2 + 1];
+          const state = decoded[index];
+          if (!state) return [];
+          const lenderInfo = infos[index * 4],
+            borrowerInfo = infos[index * 4 + 1],
+            vaultInfo = infos[index * 4 + 2],
+            collateralMintInfo = infos[index * 4 + 3];
           const lender = lenderInfo ? decodePinocchioLenderPosition(lenderInfo.data) : null;
           const borrower = borrowerInfo ? decodePinocchioBorrowerPosition(borrowerInfo.data) : null;
           if (
@@ -64,14 +89,27 @@ export function PositionsClient({
             (!borrower || (borrower.collateralAmount === 0n && borrower.borrowShares === 0n))
           )
             return [];
-          return [
-            {
-              market,
-              supplyShares: lender?.supplyShares.toString() ?? "0",
-              collateralAmount: borrower?.collateralAmount.toString() ?? "0",
-              borrowShares: borrower?.borrowShares.toString() ?? "0",
-            },
-          ];
+          const cash = vaultInfo ? vaultInfo.data.readBigUInt64LE(64) : 0n;
+          const grossAssets = cash + state.totalDebt;
+          const fees = state.creatorFeesClaimable + state.protocolFeesClaimable;
+          const assets = grossAssets > fees ? grossAssets - fees : 0n;
+          const supplyShares = lender?.supplyShares ?? 0n;
+          const supplied =
+            (supplyShares * (assets + 1_000_000n)) / (state.totalSupplyShares + 1_000_000n);
+          const borrowShares = borrower?.borrowShares ?? 0n;
+          const borrowed = divideUp(
+            borrowShares * state.borrowIndex,
+            1_000_000_000_000_000_000n,
+          );
+          const collateralDecimals = collateralMintInfo?.data[44] ?? 0;
+          const symbol = market.collateralSymbol ?? "memecoin";
+          return [{
+            market: market.address,
+            label: `${symbol} / USDC`,
+            supplied: `${formatUnits(supplied, 6)} USDC`,
+            collateral: `${formatUnits(borrower?.collateralAmount ?? 0n, collateralDecimals)} ${symbol}`,
+            borrowed: `${formatUnits(borrowed, 6)} USDC`,
+          }];
         });
         if (!cancelled) {
           setRows(next);
@@ -124,33 +162,26 @@ export function PositionsClient({
       <div className="card empty">
         <h3>No live positions found</h3>
         <p className="muted">
-          No non-zero lender or borrower PDAs exist across {markets.length} indexed markets for{" "}
-          {publicKey.toBase58()}.
+          You have not lent or borrowed in any of the {markets.length} available markets yet.
         </p>
       </div>
     );
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Market</th>
-            <th>Supply shares</th>
-            <th>Collateral units</th>
-            <th>Borrow shares</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.market}>
-              <td className="mono">{row.market}</td>
-              <td>{row.supplyShares}</td>
-              <td>{row.collateralAmount}</td>
-              <td>{row.borrowShares}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="position-grid">
+      {rows.map((row) => (
+        <article className="card position-card" key={row.market}>
+          <div>
+            <span className="eyebrow">Your {row.label} market</span>
+            <h2>{row.label}</h2>
+          </div>
+          <div className="position-facts">
+            <div><span>You lent</span><strong>{row.supplied}</strong></div>
+            <div><span>Your safety deposit</span><strong>{row.collateral}</strong></div>
+            <div><span>You borrowed</span><strong>{row.borrowed}</strong></div>
+          </div>
+          <a className="button secondary" href={`/markets/${row.market}`}>Open this market</a>
+        </article>
+      ))}
     </div>
   );
 }

@@ -1,8 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useConnection, useWallet } from "@/components/wallet-context";
-import type { Transaction } from "@solana/web3.js";
-import { buildMarketTransaction, type MarketAction } from "@/lib/transactions";
+import {
+  buildBorrowWithCollateralTransaction,
+  buildMarketTransaction,
+  type MarketAction,
+} from "@/lib/transactions";
 import { confirmSignatureByPolling } from "@/lib/confirmation";
 type Action = MarketAction;
 export function TransactionPanel({
@@ -18,65 +21,59 @@ export function TransactionPanel({
   const { connected, publicKey, sendTransaction } = wallet;
   const { connection } = useConnection();
   const [amount, setAmount] = useState("");
+  const [collateralAmount, setCollateralAmount] = useState("");
   const [marketInput, setMarketInput] = useState("");
   const [borrower, setBorrower] = useState("");
   const [status, setStatus] = useState<
-    "idle" | "checking" | "reviewed" | "sending" | "confirmed" | "failed"
+    "idle" | "checking" | "sending" | "confirming" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
-  const [reviewed, setReviewed] = useState<Transaction | null>(null);
   const fieldSuffix = action.toLowerCase().replaceAll(" ", "-");
   const valid =
     Number.isFinite(Number(amount)) &&
     Number(amount) > 0 &&
+    (action !== "Borrow" ||
+      (Number.isFinite(Number(collateralAmount)) && Number(collateralAmount) > 0)) &&
     (action !== "Withdraw" || /^\d+$/.test(amount));
   const selectedMarket = market ?? marketInput;
   const submit = async () => {
     if (!connected || !publicKey || !selectedMarket || !valid) return;
     setStatus("checking");
+    setMessage("");
     try {
-      const transaction = await buildMarketTransaction({
-        action,
-        amount,
-        market: selectedMarket,
-        owner: publicKey,
-        connection,
-        borrower: borrower || undefined,
-      });
+      const transaction =
+        action === "Borrow"
+          ? await buildBorrowWithCollateralTransaction({
+              collateralAmount,
+              borrowAmount: amount,
+              market: selectedMarket,
+              owner: publicKey,
+              connection,
+            })
+          : await buildMarketTransaction({
+              action,
+              amount,
+              market: selectedMarket,
+              owner: publicKey,
+              connection,
+              borrower: borrower || undefined,
+            });
       const latest = await connection.getLatestBlockhash("confirmed");
       transaction.feePayer = publicKey;
       transaction.recentBlockhash = latest.blockhash;
       const simulation = await connection.simulateTransaction(transaction);
       if (simulation.value.err)
         throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
-      setReviewed(transaction);
-      setMessage(
-        "Simulation succeeded. Review the amount, market, and wallet prompt before submitting.",
-      );
-      setStatus("reviewed");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Transaction simulation failed");
-      setStatus("failed");
-    }
-  };
-  const send = async () => {
-    if (!reviewed) return;
-    setStatus("sending");
-    try {
-      const signature = await sendTransaction(reviewed, connection, {
+      setStatus("sending");
+      const signature = await sendTransaction(transaction, connection, {
         preflightCommitment: "confirmed",
       });
-      const blockhash = {
-        blockhash: reviewed.recentBlockhash!,
-        lastValidBlockHeight: (await connection.getLatestBlockhash("confirmed"))
-          .lastValidBlockHeight,
-      };
-      await confirmSignatureByPolling(connection, signature, blockhash);
+      setStatus("confirming");
+      await confirmSignatureByPolling(connection, signature, latest);
       setMessage(`Confirmed transaction ${signature}`);
       setStatus("confirmed");
-      setReviewed(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Wallet submission failed");
+      setMessage(error instanceof Error ? error.message : "Transaction failed");
       setStatus("failed");
     }
   };
@@ -85,7 +82,11 @@ export function TransactionPanel({
       <h2>{action}</h2>
       <div className="field">
         <label htmlFor={`amount-${fieldSuffix}`}>
-          {action === "Withdraw" ? "Supply shares to burn" : "Exact token amount"}
+          {action === "Withdraw"
+            ? "Supply shares to burn"
+            : action === "Borrow"
+              ? "USDC you want to borrow"
+              : "Amount"}
         </label>
         <input
           id={`amount-${fieldSuffix}`}
@@ -94,7 +95,6 @@ export function TransactionPanel({
           onChange={(e) => {
             setAmount(e.target.value);
             setStatus("idle");
-            setReviewed(null);
           }}
           placeholder={action === "Withdraw" ? "0" : "0.00"}
         />
@@ -104,6 +104,25 @@ export function TransactionPanel({
             : "Fees and resulting health are calculated from a fresh simulation before signing."}
         </span>
       </div>
+      {action === "Borrow" ? (
+        <div className="field">
+          <label htmlFor="borrow-collateral">Memecoin collateral you will deposit</label>
+          <input
+            id="borrow-collateral"
+            inputMode="decimal"
+            value={collateralAmount}
+            onChange={(event) => {
+              setCollateralAmount(event.target.value);
+              setStatus("idle");
+            }}
+            placeholder="0.00"
+          />
+          <span className="help">
+            One wallet approval deposits this collateral and borrows your USDC together. The
+            transaction stops safely if the collateral is not enough.
+          </span>
+        </div>
+      ) : null}
       {!market ? (
         <div className="field">
           <label htmlFor={`market-address-${fieldSuffix}`}>Market address</label>
@@ -113,7 +132,6 @@ export function TransactionPanel({
             onChange={(event) => {
               setMarketInput(event.target.value);
               setStatus("idle");
-              setReviewed(null);
             }}
             placeholder="Isolated market public key"
           />
@@ -128,7 +146,6 @@ export function TransactionPanel({
             onChange={(event) => {
               setBorrower(event.target.value);
               setStatus("idle");
-              setReviewed(null);
             }}
             placeholder="Borrower public key"
           />
@@ -154,9 +171,14 @@ export function TransactionPanel({
         className="button primary"
         style={{ width: "100%" }}
         disabled={
-          !connected || !valid || !selectedMarket || status === "checking" || status === "sending"
+          !connected ||
+          !valid ||
+          !selectedMarket ||
+          status === "checking" ||
+          status === "sending" ||
+          status === "confirming"
         }
-        onClick={status === "reviewed" ? send : submit}
+        onClick={submit}
       >
         {!connected
           ? "Connect wallet to continue"
@@ -165,12 +187,12 @@ export function TransactionPanel({
             : status === "checking"
               ? "Checking RPC…"
               : status === "sending"
-                ? "Waiting for wallet…"
-                : status === "reviewed"
-                  ? "Submit transaction"
+                ? "Approve in wallet…"
+                : status === "confirming"
+                  ? "Confirming on Solana…"
                   : status === "confirmed"
                     ? "Confirmed"
-                    : "Review transaction"}
+                    : `${action} now`}
       </button>
     </div>
   );

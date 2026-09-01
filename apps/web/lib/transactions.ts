@@ -390,3 +390,29 @@ export async function buildMarketTransaction(input: {
     ),
   );
 }
+
+export async function buildBorrowWithCollateralTransaction(input: {
+  collateralAmount: string;
+  borrowAmount: string;
+  market: string;
+  owner: PublicKey;
+  connection: Connection;
+}) {
+  const [deposit, borrow] = await Promise.all([
+    buildMarketTransaction({
+      action: "Deposit collateral",
+      amount: input.collateralAmount,
+      market: input.market,
+      owner: input.owner,
+      connection: input.connection,
+    }),
+    buildMarketTransaction({
+      action: "Borrow",
+      amount: input.borrowAmount,
+      market: input.market,
+      owner: input.owner,
+      connection: input.connection,
+    }),
+  ]);
+  return new Transaction().add(...deposit.instructions, ...borrow.instructions);
+}

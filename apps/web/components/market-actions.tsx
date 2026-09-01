@@ -32,18 +32,18 @@ const lenderActions: ActionOption[] = [
 
 const borrowerActions: ActionOption[] = [
   {
-    action: "Deposit collateral",
-    label: "Add collateral",
-    description: "Deposit the market’s memecoin before borrowing USDC.",
-    risk: "Adding collateral stays available even if the oracle is stale or borrowing is paused.",
-    icon: Coins,
-  },
-  {
     action: "Borrow",
-    label: "Borrow USDC",
-    description: "Borrow against collateral while staying below the liquidation limit.",
+    label: "Get USDC",
+    description: "Deposit your memecoin and borrow USDC in one step.",
     risk: "Borrowing requires a fresh oracle price and must remain below every immutable cap.",
     icon: HandCoins,
+  },
+  {
+    action: "Deposit collateral",
+    label: "Make my loan safer",
+    description: "Add memecoin collateral without borrowing more USDC.",
+    risk: "More collateral lowers liquidation risk and remains available even if the oracle fails.",
+    icon: Coins,
   },
   {
     action: "Repay",
@@ -63,7 +63,7 @@ export function MarketActions({ market }: { market: string }) {
 
   const selectMode = (next: "lend" | "borrow") => {
     setMode(next);
-    setSelected(next === "lend" ? "Supply" : "Deposit collateral");
+    setSelected(next === "lend" ? "Supply" : "Borrow");
   };
 
   return (
@@ -85,6 +85,31 @@ export function MarketActions({ market }: { market: string }) {
         >
           I want to borrow
         </button>
+      </div>
+      <div className="benefit-strip">
+        {mode === "lend" ? (
+          <>
+            <div>
+              <strong>Put your USDC to work</strong>
+              <span>Borrowers pay interest to USDC lenders.</span>
+            </div>
+            <div>
+              <strong>Withdraw when cash is available</strong>
+              <span>Your return changes with borrowing demand and market losses.</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <strong>Keep your memecoin exposure</strong>
+              <span>Use it as collateral instead of selling it to receive USDC.</span>
+            </div>
+            <div>
+              <strong>Repay to unlock your collateral</strong>
+              <span>Add safety or repay before the position reaches liquidation.</span>
+            </div>
+          </>
+        )}
       </div>
       <div className="market-workspace-body">
         <div className="market-action-menu">

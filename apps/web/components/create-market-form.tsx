@@ -182,6 +182,11 @@ export function CreateMarketForm() {
           <option value="conservative">Conservative low-liquidity asset</option>
           <option value="standard">Standard volatile asset</option>
         </select>
+        <span className="help">
+          {rateModel === "conservative"
+            ? "For thin-liquidity memecoins: borrow rates start at 5%, reach 30% at 70% utilization, then rise sharply up to a 330% cap. This discourages markets from running out of USDC."
+            : "For deeper volatile markets: borrow rates start at 2%, reach 20% at 80% utilization, then rise up to a 220% cap. This is cheaper for borrowers but provides a smaller liquidity buffer."}
+        </span>
       </div>
       <div className="field">
         <label htmlFor="market-cap">Market borrow cap (USDC)</label>
