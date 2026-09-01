@@ -6,6 +6,14 @@ export interface StatusReason {
   label: string;
   detail: string;
 }
+export type MarketTagTone = "positive" | "neutral" | "warning" | "critical";
+export interface MarketTag {
+  code: string;
+  label: string;
+  detail: string;
+  tone: MarketTagTone;
+  priority: number;
+}
 export interface MarketView {
   address: string;
   collateralMint: string;
@@ -15,11 +23,20 @@ export interface MarketView {
   creator: string;
   status: MarketStatus;
   statusReasons: StatusReason[];
+  tags?: MarketTag[];
   oracleKind: OracleKind;
   customOracleHighRisk: boolean;
   lltvBps: number;
-  supplyApyBps: number | null;
-  borrowApyBps: number | null;
+  supplyAprBps: number | null;
+  borrowAprBps: number | null;
+  rateCurve?: {
+    startBorrowApr: string;
+    targetUtilizationBps: number;
+    targetBorrowApr: string;
+    maxBorrowApr: string;
+    aboveTargetShape: 1 | 2 | 3;
+  };
+  extremeRateRisk?: boolean;
   suppliedUsdc: string;
   borrowedUsdc: string;
   availableUsdc: string;

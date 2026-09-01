@@ -19,5 +19,10 @@ authority, owner, PDA bump, and signer. Economic sequences must cover first depo
 micro-deposit rounding, maximum values, stale accrual, stale/negative/deviating oracle data, price
 gaps, partial and terminal liquidation, reserve exhaustion, fee bounds, and two-market isolation.
 
+Configurable-rate coverage includes the 20,000,000% APR boundary, invalid and non-monotonic curves,
+linear/quadratic/cubic parity vectors, maximum elapsed time, overflow and rounding, full and partial
+repayment, version 1 decoding, version 2 round trips, configuration-hash uniqueness, cross-layer
+formula parity, and adversarial isolation under extreme debt.
+
 The local validator suite uses real SPL Token and Token-2022 programs. Production deployment remains
 blocked until this matrix passes against the final program binary and an independent audit reviews it.

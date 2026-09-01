@@ -287,7 +287,11 @@ pub fn create_market(
     let close_factor_bps = decoder.u16()?;
     let creator_fee_bps = decoder.u16()?;
     let protocol_fee_bps = decoder.u16()?;
-    let rate_model_id = decoder.u8()?;
+    let start_borrow_apr = decoder.u128()?;
+    let target_utilization_bps = decoder.u16()?;
+    let target_borrow_apr = decoder.u128()?;
+    let max_borrow_apr = decoder.u128()?;
+    let above_target_shape = decoder.u8()?;
     let market_borrow_cap = decoder.u64()?;
     let wallet_borrow_cap = decoder.u64()?;
     let oracle_kind = decoder.u8()?;
@@ -320,7 +324,15 @@ pub fn create_market(
         || close_factor_bps == 0
         || close_factor_bps > 10_000
         || fees > MAX_TOTAL_FEE_BPS
-        || rate_model_id > 1
+        || crate::math::configurable_borrow_rate(
+            0,
+            start_borrow_apr,
+            target_utilization_bps,
+            target_borrow_apr,
+            max_borrow_apr,
+            above_target_shape,
+        )
+        .is_err()
         || market_borrow_cap == 0
         || wallet_borrow_cap == 0
         || wallet_borrow_cap > market_borrow_cap
@@ -354,7 +366,7 @@ pub fn create_market(
         )
         .ok_or(ProgramError::InvalidInstructionData)?;
     let expected_hash = solana_sha256_hasher::hashv(&[
-        b"meme-lend-pinocchio-market-v1",
+        b"meme-lend-pinocchio-market-v2",
         creator.address().as_ref(),
         collateral_mint.address().as_ref(),
         loan_mint.address().as_ref(),
@@ -417,7 +429,7 @@ pub fn create_market(
         creator,
         market_account,
         program_id,
-        Market::LEN,
+        Market::V2_LEN,
         &Signer::from(&market_seeds),
     )?;
     let oracle_bump_seed = [oracle_bump];
@@ -470,7 +482,7 @@ pub fn create_market(
     }
     Market {
         header: AccountHeader {
-            version: STATE_VERSION,
+            version: crate::state::MARKET_STATE_VERSION,
             kind: AccountKind::Market,
             bump: market_bump,
         },
@@ -489,7 +501,7 @@ pub fn create_market(
         close_factor_bps,
         creator_fee_bps,
         protocol_fee_bps,
-        rate_model_id,
+        rate_model_id: u8::MAX,
         flags: 0,
         token_program_flags,
         market_borrow_cap,
@@ -502,6 +514,11 @@ pub fn create_market(
         creator_fees_claimable: 0,
         protocol_fees_claimable: 0,
         last_accrual_timestamp: Clock::get()?.unix_timestamp,
+        start_borrow_apr,
+        target_utilization_bps,
+        target_borrow_apr,
+        max_borrow_apr,
+        above_target_shape,
     }
     .encode(&mut market_account.try_borrow_mut()?)?;
     OracleConfiguration {

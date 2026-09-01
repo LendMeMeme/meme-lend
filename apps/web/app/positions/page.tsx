@@ -3,7 +3,7 @@ import { PositionsClient } from "@/components/positions-client";
 import { getMarkets } from "@/lib/data";
 
 export const metadata: Metadata = {
-  title: "Positions",
+  title: "My dashboard",
   description: "View isolated lender and borrower positions directly from Solana.",
 };
 
@@ -13,8 +13,8 @@ export default async function PositionsPage() {
   return (
     <main className="shell">
       <header className="page-head">
-        <div className="eyebrow">Portfolio</div>
-        <h1>My money.</h1>
+        <div className="eyebrow">My dashboard</div>
+        <h1>Your earnings and loans.</h1>
         <p className="lede">
           See what you lent, what you borrowed, and the collateral keeping your loan safe.
         </p>

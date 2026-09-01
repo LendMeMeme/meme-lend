@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { MarketView } from "@meme-lend/shared";
+import { formatApr, formatPeriodEstimate } from "@/lib/rates";
 const money = (raw: string) =>
   `${(Number(raw) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC`;
 export function MarketTable({ markets }: { markets: MarketView[] }) {
@@ -18,13 +19,12 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
         <thead>
           <tr>
             <th>Market</th>
-            <th>Status</th>
-            <th>Supply APY</th>
-            <th>Borrow APY</th>
-            <th>Supplied</th>
-            <th>Utilization</th>
-            <th>LLTV</th>
-            <th>Oracle</th>
+            <th>Earn by lending</th>
+            <th>Cost to borrow</th>
+            <th>Liquidity</th>
+            <th>Risk</th>
+            <th>Top risks</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -41,16 +41,39 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                 </Link>
               </td>
               <td>
+                <strong>{formatApr(m.supplyAprBps)}</strong>
+                <small>{formatPeriodEstimate(m.supplyAprBps, 7)} estimated weekly</small>
+              </td>
+              <td>
+                <strong>{formatApr(m.borrowAprBps)}</strong>
+                <small>{formatPeriodEstimate(m.borrowAprBps, 30)} estimated over 30 days</small>
+              </td>
+              <td>
+                <strong>{money(m.availableUsdc)} available</strong>
+                <small>
+                  {money(m.suppliedUsdc)} supplied · {m.utilizationBps / 100}% used
+                </small>
+              </td>
+              <td>
                 <span className={`badge ${m.status === "Unverified" ? "risk" : ""}`}>
                   {m.status}
                 </span>
+                <small>Liquidation at {m.lltvBps / 100}%</small>
               </td>
-              <td>{m.supplyApyBps == null ? "Unavailable" : `${m.supplyApyBps / 100}%`}</td>
-              <td>{m.borrowApyBps == null ? "Unavailable" : `${m.borrowApyBps / 100}%`}</td>
-              <td>{money(m.suppliedUsdc)}</td>
-              <td>{m.utilizationBps / 100}%</td>
-              <td>{m.lltvBps / 100}%</td>
-              <td>{m.oracleKind}</td>
+              <td>
+                <div className="tag-list compact">
+                  {(m.tags ?? []).slice(0, 3).map((tag) => (
+                    <span className={`badge tag-${tag.tone}`} title={tag.detail} key={tag.code}>
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              </td>
+              <td>
+                <Link className="button table-action" href={`/markets/${m.address}`}>
+                  View
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -19,6 +19,8 @@ interface PositionRow {
   supplied: string;
   collateral: string;
   borrowed: string;
+  hasSupply: boolean;
+  hasLoan: boolean;
 }
 
 const formatUnits = (value: bigint, decimals: number) => {
@@ -97,19 +99,20 @@ export function PositionsClient({
           const supplied =
             (supplyShares * (assets + 1_000_000n)) / (state.totalSupplyShares + 1_000_000n);
           const borrowShares = borrower?.borrowShares ?? 0n;
-          const borrowed = divideUp(
-            borrowShares * state.borrowIndex,
-            1_000_000_000_000_000_000n,
-          );
+          const borrowed = divideUp(borrowShares * state.borrowIndex, 1_000_000_000_000_000_000n);
           const collateralDecimals = collateralMintInfo?.data[44] ?? 0;
           const symbol = market.collateralSymbol ?? "memecoin";
-          return [{
-            market: market.address,
-            label: `${symbol} / USDC`,
-            supplied: `${formatUnits(supplied, 6)} USDC`,
-            collateral: `${formatUnits(borrower?.collateralAmount ?? 0n, collateralDecimals)} ${symbol}`,
-            borrowed: `${formatUnits(borrowed, 6)} USDC`,
-          }];
+          return [
+            {
+              market: market.address,
+              label: `${symbol} / USDC`,
+              supplied: `${formatUnits(supplied, 6)} USDC`,
+              collateral: `${formatUnits(borrower?.collateralAmount ?? 0n, collateralDecimals)} ${symbol}`,
+              borrowed: `${formatUnits(borrowed, 6)} USDC`,
+              hasSupply: supplyShares > 0n,
+              hasLoan: borrowShares > 0n || (borrower?.collateralAmount ?? 0n) > 0n,
+            },
+          ];
         });
         if (!cancelled) {
           setRows(next);
@@ -167,21 +170,79 @@ export function PositionsClient({
       </div>
     );
   return (
-    <div className="position-grid">
-      {rows.map((row) => (
-        <article className="card position-card" key={row.market}>
+    <div className="dashboard-sections">
+      <section>
+        <div className="section-head compact-head">
           <div>
-            <span className="eyebrow">Your {row.label} market</span>
-            <h2>{row.label}</h2>
+            <span className="eyebrow">Your earnings</span>
+            <h2>USDC you are lending</h2>
           </div>
-          <div className="position-facts">
-            <div><span>You lent</span><strong>{row.supplied}</strong></div>
-            <div><span>Your safety deposit</span><strong>{row.collateral}</strong></div>
-            <div><span>You borrowed</span><strong>{row.borrowed}</strong></div>
+        </div>
+        <div className="position-grid">
+          {rows
+            .filter((row) => row.hasSupply)
+            .map((row) => (
+              <article className="card position-card" key={`supply-${row.market}`}>
+                <div>
+                  <span className="eyebrow">Earning position</span>
+                  <h2>{row.label}</h2>
+                </div>
+                <div className="position-facts">
+                  <div>
+                    <span>You lent</span>
+                    <strong>{row.supplied}</strong>
+                  </div>
+                </div>
+                <a className="button secondary" href={`/markets/${row.market}`}>
+                  Manage earnings
+                </a>
+              </article>
+            ))}
+          {rows.every((row) => !row.hasSupply) ? (
+            <p className="muted">You are not lending USDC yet.</p>
+          ) : null}
+        </div>
+      </section>
+      <section>
+        <div className="section-head compact-head">
+          <div>
+            <span className="eyebrow">Your loans</span>
+            <h2>USDC you borrowed</h2>
           </div>
-          <a className="button secondary" href={`/markets/${row.market}`}>Open this market</a>
-        </article>
-      ))}
+        </div>
+        <div className="position-grid">
+          {rows
+            .filter((row) => row.hasLoan)
+            .map((row) => (
+              <article className="card position-card" key={`loan-${row.market}`}>
+                <div>
+                  <span className="eyebrow">Borrowing position</span>
+                  <h2>{row.label}</h2>
+                </div>
+                <div className="position-facts">
+                  <div>
+                    <span>You owe</span>
+                    <strong>{row.borrowed}</strong>
+                  </div>
+                  <div>
+                    <span>Keeping your loan safe</span>
+                    <strong>{row.collateral}</strong>
+                  </div>
+                </div>
+                <details>
+                  <summary>Technical details</summary>
+                  <p className="help">Market {row.market}</p>
+                </details>
+                <a className="button secondary" href={`/markets/${row.market}`}>
+                  Repay or add safety
+                </a>
+              </article>
+            ))}
+          {rows.every((row) => !row.hasLoan) ? (
+            <p className="muted">You do not have an active loan.</p>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }

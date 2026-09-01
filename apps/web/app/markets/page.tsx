@@ -10,10 +10,11 @@ export default async function MarketsPage() {
   return (
     <main className="shell">
       <header className="page-head">
-        <div className="eyebrow">Permissionless markets</div>
-        <h1>Know exactly where your USDC goes.</h1>
+        <div className="eyebrow">Markets</div>
+        <h1>Choose where to lend or borrow.</h1>
         <p className="lede">
-          Each market has separate assets, immutable parameters, and its own loss boundary.
+          Compare real available liquidity, current rates, and the most important risks. Returns are
+          variable estimates, never guarantees.
         </p>
       </header>
       <section className="section">
@@ -23,7 +24,7 @@ export default async function MarketsPage() {
           <div className="card empty">
             <h3>Market data unavailable</h3>
             <p className="unavailable">{result.reason}</p>
-            <p className="muted">No fallback or estimated APY is shown.</p>
+            <p className="muted">No fallback or invented APR is shown.</p>
           </div>
         )}
       </section>

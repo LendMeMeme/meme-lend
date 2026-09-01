@@ -131,13 +131,18 @@ for (;;) {
 // MongoDB is a recoverable projection, not the source of truth. Reconcile every
 // on-chain market at startup so a websocket outage or a checkpoint advancing past
 // an unprocessed signature cannot permanently hide a valid market.
-const [marketAccounts, reconciliationSlot] = await Promise.all([
+const [legacyMarkets, configurableMarkets, reconciliationSlot] = await Promise.all([
   connection.getProgramAccounts(programId, {
     commitment: "finalized",
     filters: [{ dataSize: 260 }],
   }),
+  connection.getProgramAccounts(programId, {
+    commitment: "finalized",
+    filters: [{ dataSize: 311 }],
+  }),
   connection.getSlot("finalized"),
 ]);
+const marketAccounts = [...legacyMarkets, ...configurableMarkets];
 for (const { pubkey } of marketAccounts) {
   try {
     await refreshMarket(connection, database, pubkey.toBase58(), reconciliationSlot);

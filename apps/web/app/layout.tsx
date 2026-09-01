@@ -20,8 +20,8 @@ export const viewport: Viewport = {
 };
 const links = [
   ["Markets", "/markets"],
-  ["Create", "/create-market"],
-  ["Positions", "/positions"],
+  ["My dashboard", "/positions"],
+  ["Create a market", "/create-market"],
   ["Liquidations", "/liquidations"],
   ["Docs", "/docs"],
 ];
@@ -61,7 +61,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </header>
           {children}
           <footer className="shell footer">
-            <span>Permissionless markets. Isolated risk.</span>
+            <span>Lend or borrow with clear, market-specific terms.</span>
             <span>Built on Solana</span>
           </footer>
         </WalletContext>

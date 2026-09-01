@@ -57,9 +57,13 @@ const borrowerActions: ActionOption[] = [
 export function MarketActions({
   market,
   collateralSymbol,
+  supplyAprBps,
+  borrowAprBps,
 }: {
   market: string;
   collateralSymbol?: string | null;
+  supplyAprBps?: number | null;
+  borrowAprBps?: number | null;
 }) {
   const [mode, setMode] = useState<"lend" | "borrow">("lend");
   const [selected, setSelected] = useState<MarketAction>("Supply");
@@ -149,6 +153,13 @@ export function MarketActions({
             market={market}
             risk={active.risk}
             collateralSymbol={collateralSymbol}
+            aprBps={
+              active.action === "Supply"
+                ? supplyAprBps
+                : active.action === "Borrow"
+                  ? borrowAprBps
+                  : null
+            }
           />
         </div>
       </div>

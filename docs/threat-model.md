@@ -7,6 +7,10 @@
 - Unhealthy collateral cannot be withdrawn.
 - Debt and the borrow index never decrease except through repayment or finalized loss handling.
 - Protocol plus creator fees never exceed accrued interest.
+- Extreme but valid APRs cannot overflow debt state, disable repayment, or mutate another isolated
+  market. Such markets are visibly classified experimental/high-risk.
+- Rate terms are immutable and committed into the configuration hash. Lender APR is always described
+  as a variable estimate, never guaranteed APY.
 - Oracle failure blocks risk-increasing actions but permits repayment and collateral deposits.
 - Borrow pauses cannot prevent repayment or safe collateral addition.
 

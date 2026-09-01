@@ -20,18 +20,6 @@ export function classifyMarket(metrics: RiskMetrics): {
       reasons: [{ code: "restricted", label: "Restricted", detail: metrics.restrictedReason }],
     };
   const reasons: StatusReason[] = [];
-  if (metrics.customOracle)
-    reasons.push({
-      code: "custom-oracle",
-      label: "Custom oracle",
-      detail: "This market relies on an experimental publisher selected at creation.",
-    });
-  if (!metrics.oracleFresh)
-    reasons.push({
-      code: "stale-oracle",
-      label: "Oracle unavailable",
-      detail: "The latest indexed observation is outside the configured freshness window.",
-    });
   if (
     metrics.manualCurated &&
     !metrics.customOracle &&

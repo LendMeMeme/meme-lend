@@ -34,15 +34,24 @@ actual debt, and full repayment clears residual dust explicitly.
 
 ## Interest model
 
-Utilization is debt divided by cash plus debt. The per-year borrow rate is piecewise linear:
+Utilization is debt divided by cash plus debt. Version 1 markets permanently retain their original
+Standard or Conservative fixed curve. Version 2 markets store five immutable values: starting
+borrow APR, target utilization, borrow APR at target, maximum borrow APR, and a post-target shape
+(linear, quadratic, or cubic).
 
 ```text
-u <= target: base + slope_low * u / target
-u > target:  base + slope_low + slope_high * (u-target) / (1-target)
+u <= target: start + (target_apr - start) * u / target
+u > target:  target_apr + (max_apr - target_apr) * ((u-target) / (1-target)) ^ shape
 ```
 
-The result is capped by the immutable maximum borrow rate. Supply interest is borrow interest times
-utilization, net of immutable protocol and creator fee shares.
+The technical maximum is 20,000,000% APR (200,000 times principal per year). This is an arithmetic
+limit, not a recommendation. Rates are simple annual percentage rates (APR), not compounded APY.
+Supply APR is borrow APR times utilization, net of immutable protocol and creator fee shares, and is
+always a variable estimate. Program, SDK, indexer, and frontend use the same conservative integer
+rounding formula.
+
+Accrual caps the borrow index at the largest value that keeps aggregate debt representable. Long
+idle periods and extreme curves therefore cannot overflow permanent state or disable repayment.
 
 ## Borrowing limit
 
@@ -72,6 +81,8 @@ that market's lender exchange rate. Loss cannot be charged to another market.
 
 Protocol and creator fees are immutable preset shares of interest actually accrued. Their sum cannot
 exceed accrued interest. Creator claims come only from the market's claimable fee counter.
+Creators receive nothing for an empty market, and the protocol has no fake-volume or wash-borrowing
+reward.
 
 Reward tokens use a separate vault and index. Rewards never count as lending assets and cannot make
 USDC withdrawals insolvent. A market has at most one active reward mint. Supply-share mutations settle

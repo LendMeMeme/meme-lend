@@ -14,6 +14,13 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   validateSupportedMintData,
+  borrowAprAtUtilization,
+  lenderAprAtUtilization,
+  projectSimpleAprDebt,
+  validateRateCurve,
+  MAX_BORROW_APR,
+  RATE_SCALE,
+  decodePinocchioMarket,
 } from "./index.js";
 describe("fixed point math", () => {
   it("rounds claims down and debt up", () => {
@@ -112,7 +119,13 @@ describe("optimized program ABI", () => {
         closeFactorBps: 5000,
         creatorFeeBps: 1000,
         protocolFeeBps: 500,
-        rateModelId: 0 as const,
+        rateCurve: {
+          startBorrowApr: RATE_SCALE / 50n,
+          targetUtilizationBps: 8000,
+          targetBorrowApr: RATE_SCALE / 5n,
+          maxBorrowApr: (RATE_SCALE * 22n) / 10n,
+          aboveTargetShape: 2 as const,
+        },
         marketBorrowCap: 1_000_000n,
         walletBorrowCap: 100_000n,
         oracleMaxAgeSeconds: 60,
@@ -127,8 +140,26 @@ describe("optimized program ABI", () => {
     const second = await encodeCreatePinocchioMarket(input);
     expect(first.data).toEqual(second.data);
     expect(first.data.slice(0, 32)).toEqual(first.configHash);
-    expect(first.data).toHaveLength(237);
+    expect(first.data).toHaveLength(287);
     expect(first.data.at(-1)).toBe(7);
+
+    const variants = [
+      { ...input.config.rateCurve, startBorrowApr: input.config.rateCurve.startBorrowApr + 1n },
+      { ...input.config.rateCurve, targetUtilizationBps: 7999 },
+      { ...input.config.rateCurve, targetBorrowApr: input.config.rateCurve.targetBorrowApr + 1n },
+      { ...input.config.rateCurve, maxBorrowApr: input.config.rateCurve.maxBorrowApr + 1n },
+      { ...input.config.rateCurve, aboveTargetShape: 3 as const },
+    ];
+    const hashes = await Promise.all(
+      variants.map(
+        async (rateCurve) =>
+          (await encodeCreatePinocchioMarket({ ...input, config: { ...input.config, rateCurve } }))
+            .configHash,
+      ),
+    );
+    expect(
+      new Set([first.configHash, ...hashes].map((hash) => Buffer.from(hash).toString("hex"))).size,
+    ).toBe(6);
   });
 
   it("encodes bounded oracle observations using the exact optimized ABI", () => {
@@ -143,5 +174,71 @@ describe("optimized program ABI", () => {
     });
     expect(data).toHaveLength(45);
     expect(data.at(-1)).toBe(254);
+  });
+});
+
+describe("immutable APR curves", () => {
+  const curve = {
+    startBorrowApr: RATE_SCALE / 100n,
+    targetUtilizationBps: 8000,
+    targetBorrowApr: RATE_SCALE / 5n,
+    maxBorrowApr: MAX_BORROW_APR,
+    aboveTargetShape: 3 as const,
+  };
+
+  it("matches exact boundary rates through the 20,000,000% ceiling", () => {
+    expect(borrowAprAtUtilization(curve, 0n)).toBe(curve.startBorrowApr);
+    expect(borrowAprAtUtilization(curve, (RATE_SCALE * 8n) / 10n)).toBe(curve.targetBorrowApr);
+    expect(borrowAprAtUtilization(curve, RATE_SCALE)).toBe(MAX_BORROW_APR);
+    expect(lenderAprAtUtilization(curve, 0n, 1000, 500)).toBe(0n);
+  });
+
+  it("matches the on-chain preview vectors at every displayed utilization", () => {
+    const balanced = {
+      startBorrowApr: 20_000_000_000_000_000n,
+      targetUtilizationBps: 8000,
+      targetBorrowApr: 200_000_000_000_000_000n,
+      maxBorrowApr: 2_200_000_000_000_000_000n,
+      aboveTargetShape: 2 as const,
+    };
+    const expected = [
+      20_000_000_000_000_000n,
+      76_250_000_000_000_000n,
+      132_500_000_000_000_000n,
+      188_750_000_000_000_000n,
+      700_000_000_000_000_000n,
+      2_200_000_000_000_000_000n,
+    ];
+    expect(
+      [0n, 25n, 50n, 75n, 90n, 100n].map((percent) =>
+        borrowAprAtUtilization(balanced, (RATE_SCALE * percent) / 100n),
+      ),
+    ).toEqual(expected);
+  });
+
+  it("rejects invalid, non-monotonic, and out-of-range curves", () => {
+    expect(() =>
+      validateRateCurve({ ...curve, startBorrowApr: curve.targetBorrowApr + 1n }),
+    ).toThrow();
+    expect(() => validateRateCurve({ ...curve, targetBorrowApr: MAX_BORROW_APR + 1n })).toThrow();
+    expect(() => validateRateCurve({ ...curve, targetUtilizationBps: 10_000 })).toThrow();
+    expect(() => validateRateCurve({ ...curve, maxBorrowApr: MAX_BORROW_APR + 1n })).toThrow();
+  });
+
+  it("projects simple APR debt without presenting compounding", () => {
+    expect(projectSimpleAprDebt(100n, RATE_SCALE, 31_536_000n)).toBe(200n);
+    expect(projectSimpleAprDebt(100n, MAX_BORROW_APR, 31_536_000n)).toBe(20_000_100n);
+  });
+
+  it("decodes existing 260-byte markets with their original economics", () => {
+    const bytes = new Uint8Array(260);
+    bytes[0] = 1;
+    bytes[1] = 2;
+    bytes[145] = 1;
+    const decoded = decodePinocchioMarket(bytes);
+    expect(decoded.version).toBe(1);
+    expect(decoded.rateCurve.startBorrowApr).toBe(RATE_SCALE / 20n);
+    expect(decoded.rateCurve.targetBorrowApr).toBe((RATE_SCALE * 30n) / 100n);
+    expect(decoded.rateCurve.maxBorrowApr).toBe((RATE_SCALE * 330n) / 100n);
   });
 });

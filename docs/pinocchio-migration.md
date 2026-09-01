@@ -25,7 +25,8 @@ above pass and the exact release binary has a target-cluster smoke test.
 - Numeric instruction and state fields use checked, fixed-width little-endian codecs without Borsh.
 - State accounts use a three-byte version/kind/bump header, preventing cross-account type confusion.
 - Borrower positions occupy 91 bytes and lender positions occupy 107 bytes, with no Rust padding.
-- Markets occupy 260 bytes versus 519 bytes for the Anchor account, a 49.9% reduction. Three stored
+- Legacy version 1 markets occupy 260 bytes. Configurable-rate version 2 markets occupy 311 bytes
+  versus 519 bytes for the Anchor account, retaining a 40.1% reduction. Three stored
   vault bumps allow cheap proof of the exact canonical vaults on every hot path. Other canonical
   vault/config/reward PDAs are derived instead of redundantly stored; approved rate curves and token
   program choices are represented by validated identifiers and bit flags.

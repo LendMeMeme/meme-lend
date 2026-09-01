@@ -55,17 +55,35 @@ pub fn accrue_market(market: &mut Market, cash: u64, now: i64) -> Result<u64, Pr
         market.last_accrual_timestamp = now;
         return Ok(0);
     }
-    let model = rate_model(market.rate_model_id)?;
     let utilization = math::utilization(cash, market.total_debt)?;
-    let rate = math::borrow_rate(
-        utilization,
-        model.base,
-        model.target_bps,
-        model.slope_low,
-        model.slope_high,
-        model.max,
+    let rate = if market.header.version == crate::state::MARKET_STATE_VERSION {
+        math::configurable_borrow_rate(
+            utilization,
+            market.start_borrow_apr,
+            market.target_utilization_bps,
+            market.target_borrow_apr,
+            market.max_borrow_apr,
+            market.above_target_shape,
+        )?
+    } else {
+        let model = rate_model(market.rate_model_id)?;
+        math::borrow_rate(
+            utilization,
+            model.base,
+            model.target_bps,
+            model.slope_low,
+            model.slope_high,
+            model.max,
+        )?
+    };
+    let max_index =
+        math::mul_div_floor_wide(u128::from(u64::MAX), RATE_SCALE, market.total_borrow_shares)?;
+    let new_index = math::accrue_index_capped(
+        market.borrow_index,
+        rate,
+        elapsed as u64,
+        max_index.max(market.borrow_index),
     )?;
-    let new_index = math::accrue_index(market.borrow_index, rate, elapsed as u64)?;
     let new_debt = math::total_debt_from_shares(market.total_borrow_shares, new_index)?;
     let interest = new_debt
         .checked_sub(market.total_debt)
@@ -89,13 +107,15 @@ pub fn accrue_market(market: &mut Market, cash: u64, now: i64) -> Result<u64, Pr
     }
     market.total_debt = new_debt;
     market.borrow_index = new_index;
+    let creator_fee = u64::try_from(creator_fee).map_err(|_| ProgramError::ArithmeticOverflow)?;
+    let protocol_fee = u64::try_from(protocol_fee).map_err(|_| ProgramError::ArithmeticOverflow)?;
     market.creator_fees_claimable = market
         .creator_fees_claimable
-        .checked_add(u64::try_from(creator_fee).map_err(|_| ProgramError::ArithmeticOverflow)?)
+        .checked_add(creator_fee)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     market.protocol_fees_claimable = market
         .protocol_fees_claimable
-        .checked_add(u64::try_from(protocol_fee).map_err(|_| ProgramError::ArithmeticOverflow)?)
+        .checked_add(protocol_fee)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     market.last_accrual_timestamp = now;
     u64::try_from(interest).map_err(|_| ProgramError::ArithmeticOverflow)
@@ -245,6 +265,11 @@ mod tests {
             creator_fees_claimable: 0,
             protocol_fees_claimable: 0,
             last_accrual_timestamp: 1,
+            start_borrow_apr: 0,
+            target_utilization_bps: 0,
+            target_borrow_apr: 0,
+            max_borrow_apr: 0,
+            above_target_shape: 0,
         }
     }
 
@@ -262,6 +287,23 @@ mod tests {
         let market = market();
         assert_eq!(net_market_assets(&market, 50_000).unwrap(), 100_000);
         // Oracle validation is intentionally a separate function; repay/deposit handlers do not call it.
+    }
+
+    #[test]
+    fn extreme_v2_accrual_is_bounded_and_market_isolated() {
+        let mut extreme = market();
+        extreme.header.version = crate::state::MARKET_STATE_VERSION;
+        extreme.rate_model_id = u8::MAX;
+        extreme.start_borrow_apr = MAX_BORROW_APR;
+        extreme.target_utilization_bps = 5_000;
+        extreme.target_borrow_apr = MAX_BORROW_APR;
+        extreme.max_borrow_apr = MAX_BORROW_APR;
+        extreme.above_target_shape = RATE_SHAPE_CUBIC;
+        let untouched = market();
+        accrue_market(&mut extreme, 50_000, i64::MAX).unwrap();
+        assert!(extreme.total_debt <= u128::from(u64::MAX));
+        assert_eq!(untouched.total_debt, 50_000);
+        assert_eq!(untouched.borrow_index, RATE_SCALE);
     }
 
     #[test]

@@ -1,10 +1,37 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Connection } from "@solana/web3.js";
-import { buildCreateMarketTransaction, type RATE_MODELS } from "@/lib/transactions";
+import { buildCreateMarketTransaction, RATE_MODELS } from "@/lib/transactions";
 import { confirmSignatureByPolling } from "@/lib/confirmation";
+import {
+  borrowAprAtUtilization,
+  lenderAprAtUtilization,
+  projectSimpleAprDebt,
+  RATE_SCALE,
+  type ImmutableRateCurve,
+  type RateShape,
+  validateRateCurve,
+} from "@meme-lend/sdk";
+
+type RateChoice = keyof typeof RATE_MODELS | "advanced";
+const utilizationPoints = [0, 25, 50, 75, 90, 100] as const;
+const percentToApr = (value: string) => {
+  if (!/^\d+(\.\d{0,6})?$/.test(value))
+    throw new Error("APR must be a positive percentage with up to 6 decimals");
+  const [whole, fraction = ""] = value.split(".");
+  return (
+    ((BigInt(whole) * 1_000_000n + BigInt((fraction + "000000").slice(0, 6))) * RATE_SCALE) /
+    100_000_000n
+  );
+};
+const aprLabel = (apr: bigint) => {
+  const scaled = (apr * 100_000n) / RATE_SCALE;
+  const whole = scaled / 1_000n;
+  const fraction = (scaled % 1_000n).toString().padStart(3, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}%` : `${whole}%`;
+};
 
 async function errorMessage(error: unknown, connection: Connection) {
   let logs: string[] | null = null;
@@ -30,24 +57,56 @@ export function CreateMarketForm() {
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
   const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(5000);
-  const [rateModel, setRateModel] = useState<keyof typeof RATE_MODELS>("conservative");
+  const [rateChoice, setRateChoice] = useState<RateChoice>("balanced");
+  const [startApr, setStartApr] = useState("2");
+  const [targetUtilization, setTargetUtilization] = useState("80");
+  const [targetApr, setTargetApr] = useState("20");
+  const [maximumApr, setMaximumApr] = useState("220");
+  const [rateShape, setRateShape] = useState<RateShape>(2);
+  const [extremeAcknowledged, setExtremeAcknowledged] = useState(false);
   const [marketCap, setMarketCap] = useState("");
   const [walletCap, setWalletCap] = useState("");
   const [initialLiquidity, setInitialLiquidity] = useState("");
   const [status, setStatus] = useState<
-    | "idle"
-    | "preparing"
-    | "creating"
-    | "confirming"
-    | "seeding"
-    | "confirmed"
-    | "failed"
+    "idle" | "preparing" | "creating" | "confirming" | "seeding" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
   const resetReview = () => {
     setStatus("idle");
     setMessage("");
   };
+  const customCurve = useMemo<ImmutableRateCurve | null>(() => {
+    try {
+      const curve: ImmutableRateCurve = {
+        startBorrowApr: percentToApr(startApr),
+        targetUtilizationBps: Math.round(Number(targetUtilization) * 100),
+        targetBorrowApr: percentToApr(targetApr),
+        maxBorrowApr: percentToApr(maximumApr),
+        aboveTargetShape: rateShape,
+      };
+      validateRateCurve(curve);
+      return curve;
+    } catch {
+      return null;
+    }
+  }, [startApr, targetUtilization, targetApr, maximumApr, rateShape]);
+  const rateCurve = rateChoice === "advanced" ? customCurve : RATE_MODELS[rateChoice].curve;
+  const extreme = rateCurve !== null && rateCurve.maxBorrowApr > RATE_SCALE;
+  const acknowledgmentRequired = rateCurve !== null && rateCurve.maxBorrowApr > RATE_SCALE * 10n;
+  const ratePreview = useMemo(
+    () =>
+      rateCurve
+        ? utilizationPoints.map((percent) => {
+            const utilization = (RATE_SCALE * BigInt(percent)) / 100n;
+            return {
+              percent,
+              borrow: borrowAprAtUtilization(rateCurve, utilization),
+              lender: lenderAprAtUtilization(rateCurve, utilization, 1000, 500),
+            };
+          })
+        : [],
+    [rateCurve],
+  );
   const launch = async () => {
     if (!wallet.publicKey) return;
     setStatus("preparing");
@@ -56,7 +115,7 @@ export function CreateMarketForm() {
       const result = await buildCreateMarketTransaction({
         collateralMint,
         lltvBps,
-        rateModel,
+        rateCurve: rateCurve!,
         marketBorrowCap: marketCap,
         walletBorrowCap: walletCap,
         initialLiquidity,
@@ -172,23 +231,178 @@ export function CreateMarketForm() {
           <option value={6500}>65% — higher leverage</option>
         </select>
       </div>
-      <div className="field">
-        <label htmlFor="rate-model">Interest model</label>
+      <div className="field rate-builder">
+        <label htmlFor="rate-model">Borrowing rate terms</label>
         <select
           id="rate-model"
-          value={rateModel}
+          value={rateChoice}
           onChange={(e) => {
-            setRateModel(e.target.value as keyof typeof RATE_MODELS);
+            setRateChoice(e.target.value as RateChoice);
+            setExtremeAcknowledged(false);
             resetReview();
           }}
         >
-          <option value="conservative">Conservative low-liquidity asset</option>
-          <option value="standard">Standard volatile asset</option>
+          <option value="borrowerFriendly">Borrower Friendly</option>
+          <option value="balanced">Balanced</option>
+          <option value="protectLenders">Protect Lenders</option>
+          <option value="advanced">Advanced — custom immutable curve</option>
         </select>
         <span className="help">
-          {rateModel === "conservative"
-            ? "For thin-liquidity memecoins: borrow rates start at 5%, reach 30% at 70% utilization, then rise sharply up to a 330% cap. This discourages markets from running out of USDC."
-            : "For deeper volatile markets: borrow rates start at 2%, reach 20% at 80% utilization, then rise up to a 220% cap. This is cheaper for borrowers but provides a smaller liquidity buffer."}
+          The creator chooses what borrowers pay. Lender returns are not guaranteed: they depend on
+          how much USDC is borrowed, fees, repayments, liquidity, and market losses. These terms
+          cannot be edited after launch.
+        </span>
+        {rateChoice === "advanced" ? (
+          <div className="rate-fields">
+            <label>
+              Starting borrow APR (%)
+              <input
+                inputMode="decimal"
+                value={startApr}
+                onChange={(e) => {
+                  setStartApr(e.target.value);
+                  setExtremeAcknowledged(false);
+                  resetReview();
+                }}
+              />
+            </label>
+            <label>
+              Target utilization (%)
+              <input
+                inputMode="decimal"
+                value={targetUtilization}
+                onChange={(e) => {
+                  setTargetUtilization(e.target.value);
+                  resetReview();
+                }}
+              />
+            </label>
+            <label>
+              Borrow APR at target (%)
+              <input
+                inputMode="decimal"
+                value={targetApr}
+                onChange={(e) => {
+                  setTargetApr(e.target.value);
+                  setExtremeAcknowledged(false);
+                  resetReview();
+                }}
+              />
+            </label>
+            <label>
+              Maximum borrow APR (%)
+              <input
+                inputMode="decimal"
+                value={maximumApr}
+                onChange={(e) => {
+                  setMaximumApr(e.target.value);
+                  setExtremeAcknowledged(false);
+                  resetReview();
+                }}
+              />
+            </label>
+            <label>
+              Increase above target
+              <select
+                value={rateShape}
+                onChange={(e) => {
+                  setRateShape(Number(e.target.value) as RateShape);
+                  resetReview();
+                }}
+              >
+                <option value={1}>Linear — rises steadily</option>
+                <option value={2}>Quadratic — gentle, then steep</option>
+                <option value={3}>Cubic — gentlest, then steepest</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
+        {!rateCurve ? (
+          <p className="unavailable">Enter a valid rate curve.</p>
+        ) : (
+          <>
+            {extreme ? (
+              <div className="risk-banner">
+                <strong>Experimental / high risk</strong>
+                <span>Very high borrowing cost.</span>
+              </div>
+            ) : null}
+            {acknowledgmentRequired ? (
+              <label className="acknowledgment">
+                <input
+                  type="checkbox"
+                  checked={extremeAcknowledged}
+                  onChange={(e) => setExtremeAcknowledged(e.target.checked)}
+                />
+                I understand this market can charge borrowers more than 1,000% APR and may create
+                debt extremely quickly.
+              </label>
+            ) : null}
+            <div className="rate-preview">
+              <strong>Exact immutable curve preview</strong>
+              <table>
+                <thead>
+                  <tr>
+                    <th>USDC used</th>
+                    <th>Borrower APR</th>
+                    <th>Estimated lender APR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ratePreview.map((row) => (
+                    <tr key={row.percent}>
+                      <td>{row.percent}%</td>
+                      <td>{aprLabel(row.borrow)}</td>
+                      <td>{aprLabel(row.lender)} variable</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <small>
+                Calculated with the exact integer formula used on-chain. Estimates are APR, not
+                compounded APY.
+              </small>
+            </div>
+            {extreme ? (
+              <div className="debt-preview">
+                <strong>If 100 USDC remained borrowed at the maximum APR</strong>
+                {[
+                  ["1 hour", 3600n],
+                  ["1 day", 86400n],
+                  ["30 days", 2592000n],
+                  ["1 year", 31536000n],
+                ].map(([label, seconds]) => (
+                  <span key={label.toString()}>
+                    {label.toString()}:{" "}
+                    {Number(
+                      projectSimpleAprDebt(100_000_000n, rateCurve.maxBorrowApr, seconds as bigint),
+                    ) / 1_000_000}{" "}
+                    USDC
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+      <div className="field creator-economics">
+        <span className="field-label">Who receives borrower interest</span>
+        <div>
+          <span>Market creator</span>
+          <strong>10%</strong>
+        </div>
+        <div>
+          <span>Protocol</span>
+          <strong>5%</strong>
+        </div>
+        <div>
+          <span>USDC lenders</span>
+          <strong>85% variable</strong>
+        </div>
+        <span className="help">
+          The creator earns an immutable share only when borrowers actually pay interest. Creating
+          an empty market earns nothing. Fake volume and wash borrowing receive no separate reward
+          and still incur interest, fees, and transaction costs.
         </span>
       </div>
       <div className="field">
@@ -255,7 +469,9 @@ export function CreateMarketForm() {
           status === "creating" ||
           status === "confirming" ||
           status === "seeding" ||
-          status === "confirmed"
+          status === "confirmed" ||
+          !rateCurve ||
+          (acknowledgmentRequired && !extremeAcknowledged)
         }
         onClick={launch}
       >
@@ -267,11 +483,11 @@ export function CreateMarketForm() {
               ? "Approve market creation…"
               : status === "confirming"
                 ? "Confirming market on Solana…"
-              : status === "seeding"
-                ? "Approve initial USDC supply…"
-                : status === "confirmed"
-                  ? "Market confirmed"
-                  : "Launch market"}
+                : status === "seeding"
+                  ? "Approve initial USDC supply…"
+                  : status === "confirmed"
+                    ? "Market confirmed"
+                    : "Launch market"}
       </button>
     </section>
   );

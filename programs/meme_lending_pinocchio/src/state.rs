@@ -1,8 +1,10 @@
 use pinocchio::error::ProgramError;
 
 use crate::codec::{Decoder, Encoder};
+use crate::constants::{MAX_BORROW_APR, RATE_SHAPE_CUBIC, RATE_SHAPE_LINEAR};
 
 pub const STATE_VERSION: u8 = 1;
+pub const MARKET_STATE_VERSION: u8 = 2;
 pub const ADDRESS_BYTES: usize = 32;
 pub const MARKET_FLAG_BORROWING_PAUSED: u8 = 1;
 pub const MARKET_FLAG_REWARDS_ENABLED: u8 = 2;
@@ -48,7 +50,9 @@ impl AccountHeader {
             _ => return Err(ProgramError::InvalidAccountData),
         };
         let bump = decoder.u8()?;
-        if version != STATE_VERSION || kind != expected {
+        let valid_version = version == STATE_VERSION
+            || (expected == AccountKind::Market && version == MARKET_STATE_VERSION);
+        if !valid_version || kind != expected {
             return Err(ProgramError::InvalidAccountData);
         }
         Ok(Self {
@@ -325,17 +329,26 @@ pub struct Market {
     pub creator_fees_claimable: u64,
     pub protocol_fees_claimable: u64,
     pub last_accrual_timestamp: i64,
+    /// Version 2 immutable APR curve. Version 1 accounts decode these as zero
+    /// and continue to use `rate_model_id` and the original fixed constants.
+    pub start_borrow_apr: u128,
+    pub target_utilization_bps: u16,
+    pub target_borrow_apr: u128,
+    pub max_borrow_apr: u128,
+    pub above_target_shape: u8,
 }
 
 impl Market {
-    pub const LEN: usize = AccountHeader::LEN + 4 + ADDRESS_BYTES * 4 + 10 + 3 + 16 + 64 + 32;
+    pub const V1_LEN: usize = AccountHeader::LEN + 4 + ADDRESS_BYTES * 4 + 10 + 3 + 16 + 64 + 32;
+    pub const V2_LEN: usize = Self::V1_LEN + 16 + 2 + 16 + 16 + 1;
+    pub const LEN: usize = Self::V2_LEN;
 
     pub fn decode(data: &[u8]) -> Result<Self, ProgramError> {
-        if data.len() != Self::LEN {
+        if data.len() != Self::V1_LEN && data.len() != Self::V2_LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let mut decoder = Decoder::new(data);
-        let value = Self {
+        let mut value = Self {
             header: AccountHeader::decode(&mut decoder, AccountKind::Market)?,
             authority_bump: decoder.u8()?,
             vault_bumps: *decoder.take()?,
@@ -361,10 +374,33 @@ impl Market {
             creator_fees_claimable: decoder.u64()?,
             protocol_fees_claimable: decoder.u64()?,
             last_accrual_timestamp: decoder.i64()?,
+            start_borrow_apr: 0,
+            target_utilization_bps: 0,
+            target_borrow_apr: 0,
+            max_borrow_apr: 0,
+            above_target_shape: 0,
         };
+        if value.header.version == MARKET_STATE_VERSION {
+            value.start_borrow_apr = decoder.u128()?;
+            value.target_utilization_bps = decoder.u16()?;
+            value.target_borrow_apr = decoder.u128()?;
+            value.max_borrow_apr = decoder.u128()?;
+            value.above_target_shape = decoder.u8()?;
+        }
         decoder.finish()?;
-        if value.rate_model_id > 1
+        if (value.header.version == STATE_VERSION && value.rate_model_id > 1)
+            || (value.header.version == MARKET_STATE_VERSION && value.rate_model_id != u8::MAX)
             || value.flags & !(MARKET_FLAG_BORROWING_PAUSED | MARKET_FLAG_REWARDS_ENABLED) != 0
+        {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if value.header.version == MARKET_STATE_VERSION
+            && (value.start_borrow_apr > value.target_borrow_apr
+                || value.target_borrow_apr > value.max_borrow_apr
+                || value.max_borrow_apr > MAX_BORROW_APR
+                || value.target_utilization_bps == 0
+                || value.target_utilization_bps >= 10_000
+                || !(RATE_SHAPE_LINEAR..=RATE_SHAPE_CUBIC).contains(&value.above_target_shape))
         {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -375,7 +411,12 @@ impl Market {
     }
 
     pub fn encode(&self, data: &mut [u8]) -> Result<(), ProgramError> {
-        if data.len() != Self::LEN {
+        let expected_len = if self.header.version == MARKET_STATE_VERSION {
+            Self::V2_LEN
+        } else {
+            Self::V1_LEN
+        };
+        if data.len() != expected_len {
             return Err(ProgramError::AccountDataTooSmall);
         }
         let mut encoder = Encoder::new(data);
@@ -404,6 +445,13 @@ impl Market {
         encoder.u64(self.creator_fees_claimable)?;
         encoder.u64(self.protocol_fees_claimable)?;
         encoder.i64(self.last_accrual_timestamp)?;
+        if self.header.version == MARKET_STATE_VERSION {
+            encoder.u128(self.start_borrow_apr)?;
+            encoder.u16(self.target_utilization_bps)?;
+            encoder.u128(self.target_borrow_apr)?;
+            encoder.u128(self.max_borrow_apr)?;
+            encoder.u8(self.above_target_shape)?;
+        }
         encoder.finish()
     }
 
@@ -428,8 +476,8 @@ impl<'a> MarketMut<'a> {
     const LAST_ACCRUAL_OFFSET: usize = 252;
 
     pub fn new(data: &'a mut [u8]) -> Result<Self, ProgramError> {
-        if data.len() != Market::LEN
-            || data[0] != STATE_VERSION
+        if (data.len() != Market::V1_LEN && data.len() != Market::V2_LEN)
+            || (data[0] != STATE_VERSION && data[0] != MARKET_STATE_VERSION)
             || data[1] != AccountKind::Market as u8
             || data[Self::FLAGS_OFFSET]
                 & !(MARKET_FLAG_BORROWING_PAUSED | MARKET_FLAG_REWARDS_ENABLED)
@@ -715,17 +763,67 @@ mod tests {
             creator_fees_claimable: 15,
             protocol_fees_claimable: 16,
             last_accrual_timestamp: 17,
+            start_borrow_apr: 0,
+            target_utilization_bps: 0,
+            target_borrow_apr: 0,
+            max_borrow_apr: 0,
+            above_target_shape: 0,
         };
-        let mut bytes = [0_u8; Market::LEN];
+        let mut bytes = [0_u8; Market::V1_LEN];
         market.encode(&mut bytes).unwrap();
         assert_eq!(Market::decode(&bytes).unwrap(), market);
         assert!(Market::decode(&bytes).unwrap().borrowing_paused());
-        assert_eq!(Market::LEN, 260);
+        assert_eq!(Market::V1_LEN, 260);
+        assert_eq!(Market::V2_LEN, 311);
+    }
+
+    #[test]
+    fn configurable_market_round_trips_without_changing_v1_layout() {
+        let market = Market {
+            header: AccountHeader {
+                version: MARKET_STATE_VERSION,
+                kind: AccountKind::Market,
+                bump: 1,
+            },
+            authority_bump: 2,
+            vault_bumps: [3, 4, 5],
+            creator: [1; 32],
+            collateral_mint: [2; 32],
+            loan_mint: [3; 32],
+            config_hash: [4; 32],
+            lltv_bps: 5_000,
+            liquidation_bonus_bps: 1_000,
+            close_factor_bps: 5_000,
+            creator_fee_bps: 1_000,
+            protocol_fee_bps: 500,
+            rate_model_id: u8::MAX,
+            flags: 0,
+            token_program_flags: 0,
+            market_borrow_cap: 1_000_000,
+            wallet_borrow_cap: 100_000,
+            total_supply_shares: 0,
+            total_borrow_shares: 0,
+            borrow_index: crate::constants::RATE_SCALE,
+            total_debt: 0,
+            bad_debt: 0,
+            creator_fees_claimable: 0,
+            protocol_fees_claimable: 0,
+            last_accrual_timestamp: 1,
+            start_borrow_apr: crate::constants::RATE_SCALE / 100,
+            target_utilization_bps: 8_000,
+            target_borrow_apr: crate::constants::RATE_SCALE / 5,
+            max_borrow_apr: crate::constants::MAX_BORROW_APR,
+            above_target_shape: 3,
+        };
+        let mut bytes = [0_u8; Market::V2_LEN];
+        market.encode(&mut bytes).unwrap();
+        assert_eq!(Market::decode(&bytes).unwrap(), market);
+        assert_eq!(Market::V1_LEN, 260);
     }
 
     #[test]
     fn market_rejects_unknown_packed_flags() {
-        let mut bytes = [0_u8; Market::LEN];
+        let mut bytes = [0_u8; Market::V1_LEN];
         let market = Market {
             header: header(AccountKind::Market),
             authority_bump: 1,
@@ -752,6 +850,11 @@ mod tests {
             creator_fees_claimable: 0,
             protocol_fees_claimable: 0,
             last_accrual_timestamp: 0,
+            start_borrow_apr: 0,
+            target_utilization_bps: 0,
+            target_borrow_apr: 0,
+            max_borrow_apr: 0,
+            above_target_shape: 0,
         };
         market.encode(&mut bytes).unwrap();
         assert!(Market::decode(&bytes).is_err());
@@ -804,8 +907,13 @@ mod tests {
             creator_fees_claimable: 0,
             protocol_fees_claimable: 0,
             last_accrual_timestamp: 6,
+            start_borrow_apr: 0,
+            target_utilization_bps: 0,
+            target_borrow_apr: 0,
+            max_borrow_apr: 0,
+            above_target_shape: 0,
         };
-        let mut bytes = [0_u8; Market::LEN];
+        let mut bytes = [0_u8; Market::V1_LEN];
         market.encode(&mut bytes).unwrap();
         let mut view = MarketMut::new(&mut bytes).unwrap();
         assert_eq!(view.total_supply_shares(), 2);

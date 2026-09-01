@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMarket } from "@/lib/data";
 import { MarketActions } from "@/components/market-actions";
+import { formatApr, formatPeriodEstimate } from "@/lib/rates";
 type Props = { params: Promise<{ address: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
@@ -28,12 +29,19 @@ export default async function MarketPage({ params }: Props) {
   const tokenLabel =
     m.collateralSymbol ?? `${m.collateralMint.slice(0, 4)}…${m.collateralMint.slice(-4)}`;
   const usdc = (raw: string) => `${Number(raw) / 1_000_000} USDC`;
+  const totalUsdc = (BigInt(m.availableUsdc) + BigInt(m.borrowedUsdc)).toString();
   return (
     <main className="shell">
       <header className="page-head">
         <div className="eyebrow">{m.status} market</div>
         <h1>{tokenLabel} / USDC</h1>
         {m.collateralName ? <p className="muted">{m.collateralName}</p> : null}
+        {m.extremeRateRisk ? (
+          <div className="risk-banner">
+            <strong>Experimental / high-risk rates</strong>
+            <span>Maximum borrowing cost is above 100% APR.</span>
+          </div>
+        ) : null}
         <p className="lede">
           Every value below belongs only to this market. Status is discovery metadata, not a safety
           guarantee.
@@ -41,20 +49,26 @@ export default async function MarketPage({ params }: Props) {
       </header>
       <div className="stat-grid">
         <div className="stat">
-          <span>Supply APY</span>
-          <strong>{m.supplyApyBps == null ? "Unavailable" : `${m.supplyApyBps / 100}%`}</strong>
+          <span>Lenders currently earn</span>
+          <strong>
+            {formatApr(m.supplyAprBps)} <small>variable estimate</small>
+          </strong>
+          {m.supplyAprBps === 0 ? <small>No USDC has been borrowed yet.</small> : null}
         </div>
         <div className="stat">
-          <span>Borrow APY</span>
-          <strong>{m.borrowApyBps == null ? "Unavailable" : `${m.borrowApyBps / 100}%`}</strong>
+          <span>Borrowers currently pay</span>
+          <strong>{formatApr(m.borrowAprBps)}</strong>
         </div>
         <div className="stat">
           <span>Available USDC</span>
           <strong>{usdc(m.availableUsdc)}</strong>
         </div>
         <div className="stat">
-          <span>Utilization</span>
-          <strong>{m.utilizationBps / 100}%</strong>
+          <span>USDC being used</span>
+          <strong>
+            {usdc(m.borrowedUsdc)} of {usdc(totalUsdc)}
+          </strong>
+          <small>{m.utilizationBps / 100}% utilization</small>
         </div>
         <div className="stat">
           <span>First-loss reserve</span>
@@ -69,7 +83,29 @@ export default async function MarketPage({ params }: Props) {
           </div>
           <p className="muted">Each action uses this market only.</p>
         </div>
-        <MarketActions market={m.address} collateralSymbol={m.collateralSymbol} />
+        <div className="period-summary">
+          <span>
+            <strong>{formatPeriodEstimate(m.supplyAprBps, 1)}</strong> estimated lender return per
+            day
+          </span>
+          <span>
+            <strong>{formatPeriodEstimate(m.supplyAprBps, 7)}</strong> estimated lender return per
+            week
+          </span>
+          <span>
+            <strong>{formatPeriodEstimate(m.borrowAprBps, 30)}</strong> estimated borrowing cost
+            over 30 days
+          </span>
+        </div>
+        <p className="help">
+          Period estimates use simple APR and assume today’s variable rate does not change.
+        </p>
+        <MarketActions
+          market={m.address}
+          collateralSymbol={m.collateralSymbol}
+          supplyAprBps={m.supplyAprBps}
+          borrowAprBps={m.borrowAprBps}
+        />
       </section>
       <div className="grid section">
         <section className="card panel span-7">
@@ -78,17 +114,6 @@ export default async function MarketPage({ params }: Props) {
             <div className="definition">
               <dt>LLTV</dt>
               <dd>{m.lltvBps / 100}% — liquidation threshold</dd>
-            </div>
-            <div className="definition">
-              <dt>Oracle</dt>
-              <dd>
-                {m.oracleKind}
-                {m.customOracleHighRisk ? " — custom, high risk" : ""}
-              </dd>
-            </div>
-            <div className="definition">
-              <dt>Oracle freshness</dt>
-              <dd>{m.oraclePublishedAt ?? "Unavailable"}</dd>
             </div>
             <div className="definition">
               <dt>Collateral liquidity</dt>
@@ -123,11 +148,44 @@ export default async function MarketPage({ params }: Props) {
               <dt>Creator</dt>
               <dd>{m.creator}</dd>
             </div>
+            {m.rateCurve ? (
+              <>
+                <div className="definition">
+                  <dt>Starting borrow APR</dt>
+                  <dd>
+                    {Number(
+                      (BigInt(m.rateCurve.startBorrowApr) * 10_000n) / 1_000_000_000_000_000_000n,
+                    ) / 100}
+                    %
+                  </dd>
+                </div>
+                <div className="definition">
+                  <dt>Target utilization</dt>
+                  <dd>{m.rateCurve.targetUtilizationBps / 100}%</dd>
+                </div>
+                <div className="definition">
+                  <dt>Maximum borrow APR</dt>
+                  <dd>
+                    {Number(
+                      (BigInt(m.rateCurve.maxBorrowApr) * 10_000n) / 1_000_000_000_000_000_000n,
+                    ) / 100}
+                    %
+                  </dd>
+                </div>
+              </>
+            ) : null}
           </dl>
-          <h3 style={{ marginTop: 28 }}>Classification reasons</h3>
-          {m.statusReasons.map((r) => (
-            <p className="help" key={r.code}>
-              <strong>{r.label}:</strong> {r.detail}
+          <h3 style={{ marginTop: 28 }}>Market labels</h3>
+          <div className="tag-list" style={{ marginTop: 12 }}>
+            {(m.tags ?? []).map((tag) => (
+              <span className={`badge tag-${tag.tone}`} title={tag.detail} key={tag.code}>
+                {tag.label}
+              </span>
+            ))}
+          </div>
+          {(m.tags ?? []).map((tag) => (
+            <p className="help" key={`${tag.code}-detail`}>
+              <strong>{tag.label}:</strong> {tag.detail}
             </p>
           ))}
         </aside>

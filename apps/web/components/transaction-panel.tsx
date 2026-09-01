@@ -14,11 +14,13 @@ export function TransactionPanel({
   market,
   risk,
   collateralSymbol,
+  aprBps,
 }: {
   action: Action;
   market?: string;
   risk: string;
   collateralSymbol?: string | null;
+  aprBps?: number | null;
 }) {
   const wallet = useWallet();
   const { connected, publicKey, sendTransaction } = wallet;
@@ -32,6 +34,7 @@ export function TransactionPanel({
     "idle" | "checking" | "sending" | "confirming" | "confirmed" | "failed"
   >("idle");
   const [message, setMessage] = useState("");
+  const [signature, setSignature] = useState("");
   const fieldSuffix = action.toLowerCase().replaceAll(" ", "-");
   const valid =
     Number.isFinite(Number(amount)) &&
@@ -113,12 +116,18 @@ export function TransactionPanel({
       const signature = await sendTransaction(transaction, connection, {
         preflightCommitment: "confirmed",
       });
+      setSignature(signature);
       setStatus("confirming");
       await confirmSignatureByPolling(connection, signature, latest);
-      setMessage(`Confirmed transaction ${signature}`);
+      setMessage("Completed. Solana has confirmed your transaction.");
       setStatus("confirmed");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Transaction failed");
+      const detail = error instanceof Error ? error.message : "Transaction failed";
+      setMessage(
+        detail.includes("not confirmed") || detail.includes("30.00 seconds")
+          ? "Confirmation is taking longer than expected. Your transaction may still succeed; check it on Solana Explorer before trying again."
+          : detail,
+      );
       setStatus("failed");
     }
   };
@@ -163,6 +172,22 @@ export function TransactionPanel({
           </span>
         </div>
       ) : null}
+      {aprBps != null && valid && (action === "Supply" || action === "Borrow") ? (
+        <div className="estimate-box">
+          <strong>{action === "Supply" ? "Estimated earnings" : "Estimated interest cost"}</strong>
+          <span>
+            About{" "}
+            {(((Number(amount) * (aprBps / 10_000)) / 365) * 30).toLocaleString(undefined, {
+              maximumFractionDigits: 6,
+            })}{" "}
+            USDC over 30 days
+          </span>
+          <small>
+            Assumes the current {aprBps / 100}% APR stays unchanged. Actual rates vary with
+            borrowing.
+          </small>
+        </div>
+      ) : null}
       {!market ? (
         <div className="field">
           <label htmlFor={`market-address-${fieldSuffix}`}>Market address</label>
@@ -202,9 +227,38 @@ export function TransactionPanel({
           <dd>Requires fresh oracle state</dd>
         </div>
       </dl>
+      {status !== "idle" ? (
+        <ol className="transaction-steps" aria-label="Transaction progress">
+          {["Preparing", "Waiting for approval", "Submitted", "Confirming", "Completed"].map(
+            (label, index) => {
+              const current = { checking: 0, sending: 1, confirming: 3, confirmed: 4, failed: -1 }[
+                status
+              ];
+              return (
+                <li className={current >= index ? "done" : ""} key={label}>
+                  {label}
+                </li>
+              );
+            },
+          )}
+        </ol>
+      ) : null}
       {message ? (
         <p role="status" className={status === "failed" ? "unavailable" : "help"}>
           {message}
+          {signature ? (
+            <>
+              {" "}
+              <a
+                className="text-link"
+                href={`https://explorer.solana.com/tx/${signature}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View transaction
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       <button
@@ -226,9 +280,9 @@ export function TransactionPanel({
           : !selectedMarket
             ? "Select a market to continue"
             : status === "checking"
-              ? "Checking RPC…"
+              ? "Preparing…"
               : status === "sending"
-                ? "Approve in wallet…"
+                ? "Waiting for approval…"
                 : status === "confirming"
                   ? "Confirming on Solana…"
                   : status === "confirmed"

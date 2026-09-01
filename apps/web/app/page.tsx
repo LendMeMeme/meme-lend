@@ -1,18 +1,16 @@
 import Link from "next/link";
-import { ArrowRight, Check, CircleDollarSign, Layers3, LockKeyhole, Orbit } from "lucide-react";
+import { ArrowRight, CircleDollarSign, HandCoins, ShieldCheck, Orbit } from "lucide-react";
 
 export default function HomePage() {
   return (
     <main className="shell">
       <section className="hero">
         <div className="hero-copy">
-          <div className="eyebrow">
-            <span className="status-dot" /> Live on Solana mainnet
-          </div>
-          <h1>Liquidity, without shared risk.</h1>
+          <div className="eyebrow">Lend Meme Loans</div>
+          <h1>Make your USDC useful.</h1>
           <p className="lede">
-            Lend USDC or borrow against memecoins through fully isolated markets with transparent,
-            immutable risk terms.
+            Earn interest by lending USDC, or use your memecoin to borrow USDC without selling it.
+            Every market shows its costs and risks before you act.
           </p>
           <div className="actions">
             <Link className="button primary" href="/markets">
@@ -22,55 +20,39 @@ export default function HomePage() {
               Create market
             </Link>
           </div>
-          <div className="trust-row" aria-label="Protocol properties">
-            <span>
-              <Check size={14} /> Isolated markets
-            </span>
-            <span>
-              <Check size={14} /> Immutable parameters
-            </span>
-            <span>
-              <Check size={14} /> On-chain settlement
-            </span>
-          </div>
         </div>
         <aside className="protocol-card">
           <div className="protocol-card-head">
-            <span>Protocol architecture</span>
-            <span className="badge">Mainnet</span>
+            <span>Choose what you want to do</span>
           </div>
           <div className="architecture-row">
             <span className="architecture-icon">
               <CircleDollarSign size={19} />
             </span>
             <div>
-              <strong>USDC liquidity</strong>
-              <small>Supplied per market</small>
+              <strong>Earn with USDC</strong>
+              <small>Borrowers pay variable interest to lenders.</small>
             </div>
           </div>
           <div className="architecture-line" />
           <div className="architecture-row">
             <span className="architecture-icon">
-              <Layers3 size={19} />
+              <HandCoins size={19} />
             </span>
             <div>
-              <strong>Isolated collateral</strong>
-              <small>No cross-market contagion</small>
+              <strong>Borrow USDC</strong>
+              <small>Deposit a supported memecoin as security.</small>
             </div>
           </div>
           <div className="architecture-line" />
           <div className="architecture-row">
             <span className="architecture-icon">
-              <LockKeyhole size={19} />
+              <ShieldCheck size={19} />
             </span>
             <div>
-              <strong>Fixed risk terms</strong>
-              <small>Immutable after creation</small>
+              <strong>Understand the risk</strong>
+              <small>Rates, liquidity, and liquidation limits stay visible.</small>
             </div>
-          </div>
-          <div className="program-strip">
-            <span>Program</span>
-            <code>8hDE…uJym</code>
           </div>
         </aside>
       </section>
@@ -78,7 +60,7 @@ export default function HomePage() {
         <div className="section-head">
           <div>
             <div className="eyebrow">Live markets</div>
-            <h2>Choose risk on your terms.</h2>
+            <h2>Compare before you choose.</h2>
           </div>
           <Link className="muted" href="/markets">
             View all markets →
@@ -99,7 +81,8 @@ export default function HomePage() {
             <span className="step-number">01 / CREATE</span>
             <h3>Pick the exact terms</h3>
             <p>
-              Choose an approved oracle, LLTV preset, rate model, caps, and initial USDC liquidity.
+              Choose the managed oracle, LLTV, immutable APR curve, caps, and initial USDC
+              liquidity.
             </p>
           </article>
           <article className="card step">

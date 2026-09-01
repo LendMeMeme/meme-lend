@@ -7,6 +7,11 @@ hash containing the collateral mint, loan mint, oracle configuration, liquidatio
 model, caps, fee preset, and a schema version. Every vault and position contains or derives from
 that market address.
 
+Market accounts are explicitly versioned. Existing 260-byte version 1 accounts retain their fixed
+preset economics without migration. New 311-byte version 2 accounts append an immutable APR curve
+while preserving all existing mutable-field offsets. The version 2 configuration hash uses the
+`meme-lend-pinocchio-market-v2` domain and commits to every curve parameter.
+
 No global liquidity exists. Instructions validate the market recorded by every position, mint,
 vault, token program, and oracle account. Consequently, a market cannot present another market's
 vault as its own or socialize a loss outside its own state.

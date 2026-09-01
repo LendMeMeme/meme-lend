@@ -18,6 +18,39 @@ pub fn mul_div_floor(a: u128, b: u128, denominator: u128) -> MathResult<u128> {
         .ok_or_else(invalid)
 }
 
+/// Computes floor(a*b/denominator) without requiring the intermediate product
+/// to fit in u128. Callers still receive an error if the final result overflows.
+pub fn mul_div_floor_wide(a: u128, b: u128, denominator: u128) -> MathResult<u128> {
+    if denominator == 0 {
+        return Err(invalid());
+    }
+    let quotient = a.checked_div(denominator).ok_or_else(invalid)?;
+    let remainder = a.checked_rem(denominator).ok_or_else(invalid)?;
+    quotient
+        .checked_mul(b)
+        .and_then(|value| {
+            remainder
+                .checked_mul(b)
+                .and_then(|tail| tail.checked_div(denominator))
+                .and_then(|tail| value.checked_add(tail))
+        })
+        .ok_or_else(invalid)
+}
+
+pub fn mul_div_ceil_wide(a: u128, b: u128, denominator: u128) -> MathResult<u128> {
+    let floor = mul_div_floor_wide(a, b, denominator)?;
+    let remainder = a
+        .checked_rem(denominator)
+        .and_then(|value| value.checked_mul(b))
+        .and_then(|value| value.checked_rem(denominator))
+        .ok_or_else(invalid)?;
+    if remainder == 0 {
+        Ok(floor)
+    } else {
+        floor.checked_add(1).ok_or_else(invalid)
+    }
+}
+
 pub fn mul_div_ceil(a: u128, b: u128, denominator: u128) -> MathResult<u128> {
     if denominator == 0 {
         return Err(invalid());
@@ -67,6 +100,70 @@ pub fn borrow_rate(
             .ok_or_else(invalid)?
     };
     Ok(rate.min(u128::from(max_rate)))
+}
+
+pub fn configurable_borrow_rate(
+    utilization: u128,
+    start_apr: u128,
+    target_utilization_bps: u16,
+    target_apr: u128,
+    max_apr: u128,
+    above_target_shape: u8,
+) -> MathResult<u128> {
+    if start_apr > target_apr
+        || target_apr > max_apr
+        || max_apr > MAX_BORROW_APR
+        || target_utilization_bps == 0
+        || u64::from(target_utilization_bps) >= BPS_DENOMINATOR
+        || !(RATE_SHAPE_LINEAR..=RATE_SHAPE_CUBIC).contains(&above_target_shape)
+    {
+        return Err(invalid());
+    }
+    let utilization = utilization.min(RATE_SCALE);
+    let target = mul_div_floor_wide(
+        u128::from(target_utilization_bps),
+        RATE_SCALE,
+        u128::from(BPS_DENOMINATOR),
+    )?;
+    if utilization <= target {
+        return start_apr
+            .checked_add(mul_div_floor_wide(
+                target_apr.checked_sub(start_apr).ok_or_else(invalid)?,
+                utilization,
+                target,
+            )?)
+            .ok_or_else(invalid);
+    }
+    let above = utilization.checked_sub(target).ok_or_else(invalid)?;
+    let remaining = RATE_SCALE.checked_sub(target).ok_or_else(invalid)?;
+    let mut increase = max_apr.checked_sub(target_apr).ok_or_else(invalid)?;
+    for _ in 0..above_target_shape {
+        increase = mul_div_floor_wide(increase, above, remaining)?;
+    }
+    target_apr.checked_add(increase).ok_or_else(invalid)
+}
+
+/// Simple APR accrual capped at a caller-provided index ceiling. Capping keeps
+/// debt representable and therefore repayable after arbitrarily long gaps.
+pub fn accrue_index_capped(
+    index: u128,
+    annual_rate: u128,
+    elapsed_seconds: u64,
+    max_index: u128,
+) -> MathResult<u128> {
+    if index == 0 || max_index < index || annual_rate > MAX_BORROW_APR {
+        return Err(invalid());
+    }
+    let growth = mul_div_ceil_wide(
+        annual_rate,
+        u128::from(elapsed_seconds),
+        u128::from(SECONDS_PER_YEAR),
+    )?;
+    let room = max_index.checked_sub(index).ok_or_else(invalid)?;
+    let max_growth = mul_div_floor_wide(room, RATE_SCALE, index)?;
+    let bounded_growth = growth.min(max_growth);
+    let delta = mul_div_ceil_wide(index, bounded_growth, RATE_SCALE)?.min(room);
+    index.checked_add(delta).ok_or_else(invalid)
 }
 
 pub fn accrue_index(index: u128, annual_rate: u128, elapsed_seconds: u64) -> MathResult<u128> {
@@ -333,5 +430,60 @@ mod tests {
         assert_eq!(total_debt_from_shares(1, RATE_SCALE + 1).unwrap(), 2);
         assert_eq!(price_deviation_bps(100, 110).unwrap(), 1_000);
         assert_eq!(price_deviation_bps(110, 100).unwrap(), 1_000);
+    }
+
+    #[test]
+    fn configurable_curve_supports_the_technical_maximum() {
+        let max = MAX_BORROW_APR;
+        assert_eq!(
+            configurable_borrow_rate(0, 0, 8_000, RATE_SCALE, max, 3).unwrap(),
+            0
+        );
+        assert_eq!(
+            configurable_borrow_rate(RATE_SCALE, 0, 8_000, RATE_SCALE, max, 3).unwrap(),
+            max
+        );
+        assert!(configurable_borrow_rate(0, 2, 8_000, 1, max, 1).is_err());
+        assert!(configurable_borrow_rate(0, 0, 10_000, 1, max, 1).is_err());
+        assert!(configurable_borrow_rate(0, 0, 8_000, 1, max + 1, 1).is_err());
+    }
+
+    #[test]
+    fn configurable_curve_matches_cross_layer_preview_vectors() {
+        let start = RATE_SCALE * 2 / 100;
+        let target = RATE_SCALE * 20 / 100;
+        let max = RATE_SCALE * 220 / 100;
+        let expected = [
+            20_000_000_000_000_000,
+            76_250_000_000_000_000,
+            132_500_000_000_000_000,
+            188_750_000_000_000_000,
+            700_000_000_000_000_000,
+            2_200_000_000_000_000_000,
+        ];
+        for (percent, expected_rate) in [0_u128, 25, 50, 75, 90, 100].into_iter().zip(expected) {
+            assert_eq!(
+                configurable_borrow_rate(RATE_SCALE * percent / 100, start, 8_000, target, max, 2)
+                    .unwrap(),
+                expected_rate
+            );
+        }
+    }
+
+    #[test]
+    fn maximum_rate_and_time_are_capped_without_overflow() {
+        let max_index = u128::from(u64::MAX).checked_mul(RATE_SCALE).unwrap();
+        let next = accrue_index_capped(RATE_SCALE, MAX_BORROW_APR, u64::MAX, max_index).unwrap();
+        assert!(next > RATE_SCALE);
+        assert!(next <= max_index);
+    }
+
+    #[test]
+    fn full_and_partial_extreme_debt_repayment_rounding_stays_available() {
+        let index = RATE_SCALE.checked_mul(200_001).unwrap();
+        let debt = shares_to_debt_ceil(10, index).unwrap();
+        assert_eq!(liquidation_shares_to_burn(debt, debt, 10).unwrap(), 10);
+        let partial = liquidation_shares_to_burn(debt / 2, debt, 10).unwrap();
+        assert!(partial > 0 && partial < 10);
     }
 }

@@ -1,7 +1,76 @@
 import { PublicKey, TransactionInstruction, type AccountMeta } from "@solana/web3.js";
 
+export const RATE_SCALE = 1_000_000_000_000_000_000n;
+export const BPS = 10_000n;
+export const MAX_BORROW_APR = 200_000n * RATE_SCALE;
+export type RateShape = 1 | 2 | 3;
+export type ImmutableRateCurve = {
+  startBorrowApr: bigint;
+  targetUtilizationBps: number;
+  targetBorrowApr: bigint;
+  maxBorrowApr: bigint;
+  aboveTargetShape: RateShape;
+};
+
+export function validateRateCurve(curve: ImmutableRateCurve): void {
+  if (curve.startBorrowApr < 0n || curve.startBorrowApr > curve.targetBorrowApr)
+    throw new Error("Starting APR must not exceed target APR");
+  if (curve.targetBorrowApr > curve.maxBorrowApr)
+    throw new Error("Target APR must not exceed maximum APR");
+  if (curve.maxBorrowApr > MAX_BORROW_APR)
+    throw new Error("Maximum APR exceeds the 20,000,000% technical limit");
+  if (
+    !Number.isInteger(curve.targetUtilizationBps) ||
+    curve.targetUtilizationBps <= 0 ||
+    curve.targetUtilizationBps >= 10_000
+  )
+    throw new Error("Target utilization must be greater than 0% and less than 100%");
+  if (![1, 2, 3].includes(curve.aboveTargetShape)) throw new Error("Invalid rate curve shape");
+}
+
+export function borrowAprAtUtilization(curve: ImmutableRateCurve, utilization: bigint): bigint {
+  validateRateCurve(curve);
+  const bounded = utilization < 0n ? 0n : utilization > RATE_SCALE ? RATE_SCALE : utilization;
+  const target = (BigInt(curve.targetUtilizationBps) * RATE_SCALE) / BPS;
+  if (bounded <= target)
+    return (
+      curve.startBorrowApr + ((curve.targetBorrowApr - curve.startBorrowApr) * bounded) / target
+    );
+  const above = bounded - target;
+  const remaining = RATE_SCALE - target;
+  let increase = curve.maxBorrowApr - curve.targetBorrowApr;
+  for (let power = 0; power < curve.aboveTargetShape; power += 1)
+    increase = (increase * above) / remaining;
+  return curve.targetBorrowApr + increase;
+}
+
+export function lenderAprAtUtilization(
+  curve: ImmutableRateCurve,
+  utilization: bigint,
+  creatorFeeBps: number,
+  protocolFeeBps: number,
+): bigint {
+  const lenderShare = BPS - BigInt(creatorFeeBps + protocolFeeBps);
+  return (
+    (((borrowAprAtUtilization(curve, utilization) * utilization) / RATE_SCALE) * lenderShare) / BPS
+  );
+}
+
+export function projectSimpleAprDebt(
+  principal: bigint,
+  annualApr: bigint,
+  elapsedSeconds: bigint,
+): bigint {
+  if (principal < 0n || elapsedSeconds < 0n) throw new Error("Invalid debt projection input");
+  const year = 31_536_000n;
+  const growth = (annualApr * elapsedSeconds + year - 1n) / year;
+  return principal + (principal * growth + RATE_SCALE - 1n) / RATE_SCALE;
+}
+
 export const PINOCCHIO_PROGRAM_ID = new PublicKey("8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym");
-export const PINOCCHIO_MARKET_LEN = 260;
+export const PINOCCHIO_MARKET_V1_LEN = 260;
+export const PINOCCHIO_MARKET_V2_LEN = 311;
+export const PINOCCHIO_MARKET_LEN = PINOCCHIO_MARKET_V2_LEN;
 export const PINOCCHIO_GLOBAL_CONFIG_LEN = 144;
 
 export const PINOCCHIO_TAG = {
@@ -66,8 +135,8 @@ function readSigned(data: Uint8Array, offset: number, bytes: number): bigint {
   return (value & sign) === 0n ? value : value - (1n << BigInt(bytes * 8));
 }
 
-function assertState(data: Uint8Array, length: number, kind: number): void {
-  if (data.length !== length || data[0] !== 1 || data[1] !== kind)
+function assertState(data: Uint8Array, length: number, kind: number, versions = [1]): void {
+  if (data.length !== length || !versions.includes(data[0] ?? -1) || data[1] !== kind)
     throw new Error("Invalid optimized program account");
 }
 
@@ -93,6 +162,7 @@ export function decodePinocchioGlobalConfig(data: Uint8Array): PinocchioGlobalCo
 }
 
 export type PinocchioMarket = {
+  version: 1 | 2;
   bump: number;
   authorityBump: number;
   vaultBumps: readonly [number, number, number];
@@ -120,13 +190,45 @@ export type PinocchioMarket = {
   creatorFeesClaimable: bigint;
   protocolFeesClaimable: bigint;
   lastAccrualTimestamp: bigint;
+  rateCurve: ImmutableRateCurve;
 };
 
 export function decodePinocchioMarket(data: Uint8Array): PinocchioMarket {
-  assertState(data, PINOCCHIO_MARKET_LEN, 2);
+  const version = data[0];
+  if (version === 1) assertState(data, PINOCCHIO_MARKET_V1_LEN, 2, [1]);
+  else if (version === 2) assertState(data, PINOCCHIO_MARKET_V2_LEN, 2, [2]);
+  else throw new Error("Unsupported optimized market version");
   const flags = data[146];
   const tokenFlags = data[147];
+  const legacyCurves = [
+    {
+      startBorrowApr: 20_000_000_000_000_000n,
+      targetUtilizationBps: 8000,
+      targetBorrowApr: 200_000_000_000_000_000n,
+      maxBorrowApr: 2_200_000_000_000_000_000n,
+      aboveTargetShape: 1 as const,
+    },
+    {
+      startBorrowApr: 50_000_000_000_000_000n,
+      targetUtilizationBps: 7000,
+      targetBorrowApr: 300_000_000_000_000_000n,
+      maxBorrowApr: 3_300_000_000_000_000_000n,
+      aboveTargetShape: 1 as const,
+    },
+  ];
+  const rateCurve =
+    version === 2
+      ? {
+          startBorrowApr: readUnsigned(data, 260, 16),
+          targetUtilizationBps: Number(readUnsigned(data, 276, 2)),
+          targetBorrowApr: readUnsigned(data, 278, 16),
+          maxBorrowApr: readUnsigned(data, 294, 16),
+          aboveTargetShape: data[310] as RateShape,
+        }
+      : legacyCurves[data[145]];
+  if (!rateCurve) throw new Error("Invalid legacy rate model");
   return {
+    version: version as 1 | 2,
     bump: data[2],
     authorityBump: data[3],
     vaultBumps: [data[4], data[5], data[6]],
@@ -154,6 +256,7 @@ export function decodePinocchioMarket(data: Uint8Array): PinocchioMarket {
     creatorFeesClaimable: readUnsigned(data, 236, 8),
     protocolFeesClaimable: readUnsigned(data, 244, 8),
     lastAccrualTimestamp: readSigned(data, 252, 8),
+    rateCurve,
   };
 }
 
@@ -307,7 +410,7 @@ export type OptimizedMarketConfig = {
   closeFactorBps: number;
   creatorFeeBps: number;
   protocolFeeBps: number;
-  rateModelId: 0 | 1;
+  rateCurve: ImmutableRateCurve;
   marketBorrowCap: bigint;
   walletBorrowCap: bigint;
   oracleMaxAgeSeconds: number;
@@ -327,6 +430,7 @@ export async function encodeCreatePinocchioMarket(input: {
   bumps: readonly [number, number, number, number, number, number, number];
 }): Promise<{ configHash: Uint8Array; data: Uint8Array }> {
   const { config } = input;
+  validateRateCurve(config.rateCurve);
   if (config.oracleSources.length < 1 || config.oracleSources.length > 5)
     throw new Error("One to five oracle sources are required");
   const sources = [...config.oracleSources];
@@ -337,7 +441,11 @@ export async function encodeCreatePinocchioMarket(input: {
     unsigned(BigInt(config.closeFactorBps), 2),
     unsigned(BigInt(config.creatorFeeBps), 2),
     unsigned(BigInt(config.protocolFeeBps), 2),
-    Uint8Array.of(config.rateModelId),
+    unsigned(config.rateCurve.startBorrowApr, 16),
+    unsigned(BigInt(config.rateCurve.targetUtilizationBps), 2),
+    unsigned(config.rateCurve.targetBorrowApr, 16),
+    unsigned(config.rateCurve.maxBorrowApr, 16),
+    Uint8Array.of(config.rateCurve.aboveTargetShape),
     unsigned(config.marketBorrowCap, 8),
     unsigned(config.walletBorrowCap, 8),
     Uint8Array.of(4),
@@ -348,7 +456,7 @@ export async function encodeCreatePinocchioMarket(input: {
     ...sources.map((source) => source.toBytes()),
   );
   const digestInput = concat(
-    text("meme-lend-pinocchio-market-v1"),
+    text("meme-lend-pinocchio-market-v2"),
     input.creator.toBytes(),
     input.collateralMint.toBytes(),
     input.loanMint.toBytes(),

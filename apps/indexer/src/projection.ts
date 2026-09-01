@@ -5,44 +5,27 @@ import {
   decodePinocchioOracleObservation,
   decodePinocchioReserve,
   pinocchioPdas,
+  borrowAprAtUtilization,
+  lenderAprAtUtilization,
+  RATE_SCALE,
 } from "@meme-lend/sdk";
 import type { MarketView } from "@meme-lend/shared";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { classifyMarket } from "./classification.js";
 import { tokenMetadata } from "./metadata.js";
+import { marketTags } from "./tags.js";
 
 const TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const TOKEN_2022 = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const ASSOCIATED = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-const RATE_SCALE = 1_000_000_000_000_000_000n;
-const RATE_MODELS = [
-  {
-    base: 20_000_000_000_000_000n,
-    targetBps: 8_000n,
-    low: 180_000_000_000_000_000n,
-    high: 2_000_000_000_000_000_000n,
-    max: 2_200_000_000_000_000_000n,
-  },
-  {
-    base: 50_000_000_000_000_000n,
-    targetBps: 7_000n,
-    low: 250_000_000_000_000_000n,
-    high: 3_000_000_000_000_000_000n,
-    max: 3_300_000_000_000_000_000n,
-  },
-] as const;
-
 function annualRates(market: ReturnType<typeof decodePinocchioMarket>, utilization: bigint) {
-  const model = RATE_MODELS[market.rateModelId];
-  if (!model) return { borrow: null, supply: null };
-  const target = (model.targetBps * RATE_SCALE) / 10_000n;
-  const rate =
-    utilization <= target
-      ? model.base + (model.low * utilization) / target
-      : model.base + model.low + (model.high * (utilization - target)) / (RATE_SCALE - target);
-  const borrow = rate < model.max ? rate : model.max;
-  const lenderShareBps = 10_000n - BigInt(market.creatorFeeBps + market.protocolFeeBps);
-  const supply = (((borrow * utilization) / RATE_SCALE) * lenderShareBps) / 10_000n;
+  const borrow = borrowAprAtUtilization(market.rateCurve, utilization);
+  const supply = lenderAprAtUtilization(
+    market.rateCurve,
+    utilization,
+    market.creatorFeeBps,
+    market.protocolFeeBps,
+  );
   return {
     borrow: Number((borrow * 10_000n) / RATE_SCALE),
     supply: Number((supply * 10_000n) / RATE_SCALE),
@@ -128,11 +111,34 @@ export async function refreshMarket(
     creator: market.creator.toBase58(),
     status: classification.status,
     statusReasons: classification.reasons,
+    tags: marketTags({
+      token2022: market.collateralToken2022,
+      metadataAvailable: metadata.name !== null || metadata.symbol !== null,
+      ageDays,
+      uniqueLenders,
+      suppliedUsdc: Number(supplied) / 1_000_000,
+      borrowedUsdc: Number(debt) / 1_000_000,
+      utilizationBps,
+      collateralLiquidityUsd: null,
+      firstLossReserveUsdc: Number(reserve.deposited) / 1_000_000,
+      badDebtUsdc: Number(market.badDebt) / 1_000_000,
+      lltvBps: market.lltvBps,
+      rateModelId: market.rateModelId,
+      maxBorrowApr: market.rateCurve.maxBorrowApr,
+    }),
     oracleKind: "Custom",
     customOracleHighRisk: oracle.customHighRisk,
     lltvBps: market.lltvBps,
-    supplyApyBps: rates.supply,
-    borrowApyBps: rates.borrow,
+    supplyAprBps: rates.supply,
+    borrowAprBps: rates.borrow,
+    rateCurve: {
+      startBorrowApr: market.rateCurve.startBorrowApr.toString(),
+      targetUtilizationBps: market.rateCurve.targetUtilizationBps,
+      targetBorrowApr: market.rateCurve.targetBorrowApr.toString(),
+      maxBorrowApr: market.rateCurve.maxBorrowApr.toString(),
+      aboveTargetShape: market.rateCurve.aboveTargetShape,
+    },
+    extremeRateRisk: market.rateCurve.maxBorrowApr > RATE_SCALE,
     suppliedUsdc: supplied.toString(),
     borrowedUsdc: debt.toString(),
     availableUsdc: cash.toString(),

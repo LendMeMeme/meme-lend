@@ -18,6 +18,8 @@ import {
   pinocchioInstruction,
   pinocchioPdas,
   pinocchioShares,
+  RATE_SCALE,
+  type ImmutableRateCurve,
 } from "@meme-lend/sdk";
 import {
   PublicKey,
@@ -29,7 +31,38 @@ import {
 
 export type MarketAction =
   "Supply" | "Withdraw" | "Deposit collateral" | "Borrow" | "Repay" | "Liquidate";
-export const RATE_MODELS = { standard: { id: 0 }, conservative: { id: 1 } } as const;
+export const RATE_MODELS = {
+  borrowerFriendly: {
+    label: "Borrower Friendly",
+    curve: {
+      startBorrowApr: RATE_SCALE / 100n,
+      targetUtilizationBps: 8500,
+      targetBorrowApr: RATE_SCALE / 10n,
+      maxBorrowApr: RATE_SCALE,
+      aboveTargetShape: 1,
+    },
+  },
+  balanced: {
+    label: "Balanced",
+    curve: {
+      startBorrowApr: (RATE_SCALE * 2n) / 100n,
+      targetUtilizationBps: 8000,
+      targetBorrowApr: (RATE_SCALE * 20n) / 100n,
+      maxBorrowApr: (RATE_SCALE * 220n) / 100n,
+      aboveTargetShape: 2,
+    },
+  },
+  protectLenders: {
+    label: "Protect Lenders",
+    curve: {
+      startBorrowApr: (RATE_SCALE * 5n) / 100n,
+      targetUtilizationBps: 7000,
+      targetBorrowApr: (RATE_SCALE * 30n) / 100n,
+      maxBorrowApr: (RATE_SCALE * 330n) / 100n,
+      aboveTargetShape: 3,
+    },
+  },
+} as const satisfies Record<string, { label: string; curve: ImmutableRateCurve }>;
 export const PROTOCOL_ORACLE_PUBLISHERS = [
   new PublicKey("6DJEenuAhzDojLcGgDhs8MjtxbP9xnUpAdUG5qVmZBa1"),
   new PublicKey("GsoCUeJyngZMnt4Mm9Uptgavp9Poq1EskoKUou8ackGV"),
@@ -72,13 +105,13 @@ export function requiredCollateralDeposit(input: {
   targetLtvBps: number;
 }) {
   const requiredTotal = divideUp(
-    input.resultingDebt * 10_000n * 10n ** BigInt(input.collateralDecimals) *
+    input.resultingDebt *
+      10_000n *
+      10n ** BigInt(input.collateralDecimals) *
       10n ** BigInt(input.priceDecimals),
     input.price * BigInt(input.targetLtvBps),
   );
-  return requiredTotal > input.existingCollateral
-    ? requiredTotal - input.existingCollateral
-    : 0n;
+  return requiredTotal > input.existingCollateral ? requiredTotal - input.existingCollateral : 0n;
 }
 
 async function data(connection: Connection, key: PublicKey): Promise<Uint8Array> {
@@ -90,7 +123,7 @@ async function data(connection: Connection, key: PublicKey): Promise<Uint8Array>
 export async function buildCreateMarketTransaction(input: {
   collateralMint: string;
   lltvBps: 3000 | 4000 | 5000 | 6000 | 6500;
-  rateModel: keyof typeof RATE_MODELS;
+  rateCurve: ImmutableRateCurve;
   marketBorrowCap: string;
   walletBorrowCap: string;
   initialLiquidity: string;
@@ -140,7 +173,7 @@ export async function buildCreateMarketTransaction(input: {
     closeFactorBps: 5000,
     creatorFeeBps: 1000,
     protocolFeeBps: 500,
-    rateModelId: RATE_MODELS[input.rateModel].id,
+    rateCurve: input.rateCurve,
     marketBorrowCap,
     walletBorrowCap,
     oracleMaxAgeSeconds: Math.min(global.maxOracleAgeSeconds, 60),
@@ -430,12 +463,12 @@ export async function buildBorrowWithCollateralTransaction(input: {
   connection: Connection;
 }) {
   const borrow = await buildMarketTransaction({
-      action: "Borrow",
-      amount: input.borrowAmount,
-      market: input.market,
-      owner: input.owner,
-      connection: input.connection,
-    });
+    action: "Borrow",
+    amount: input.borrowAmount,
+    market: input.market,
+    owner: input.owner,
+    connection: input.connection,
+  });
   if (Number(input.collateralAmount) === 0) return borrow;
   const deposit = await buildMarketTransaction({
     action: "Deposit collateral",
