@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { median, selectDexConsensus, spreadBps, weightedMedian } from "./pricing.js";
+import { median, parseDexPools, selectDexConsensus, spreadBps, weightedMedian } from "./pricing.js";
 import { usdPriceToOracle } from "./publisher.js";
 
 describe("oracle aggregation math", () => {
@@ -44,5 +44,29 @@ describe("oracle aggregation math", () => {
         500,
       ),
     ).toEqual([]);
+  });
+
+  it("rejects prices for pools where the collateral is the quote token", () => {
+    expect(
+      parseDexPools(
+        [
+          {
+            dexId: "pumpswap",
+            baseToken: { address: "GPRO" },
+            quoteToken: { address: "SOL" },
+            priceUsd: "0.0036",
+            liquidity: { usd: 200_000 },
+          },
+          {
+            dexId: "raydium",
+            baseToken: { address: "ANOTHER_TOKEN" },
+            quoteToken: { address: "GPRO" },
+            priceUsd: "0.00001",
+            liquidity: { usd: 80_000 },
+          },
+        ],
+        "GPRO",
+      ),
+    ).toEqual([{ dex: "pumpswap", price: 0.0036, liquidity: 200_000 }]);
   });
 });

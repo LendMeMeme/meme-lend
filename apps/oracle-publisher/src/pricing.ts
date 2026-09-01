@@ -36,16 +36,7 @@ export async function dexScreenerSample(
     `${config.dexScreenerUrl}/token-pairs/v1/solana/${encodeURIComponent(mint)}`,
   )) as unknown;
   if (!Array.isArray(raw)) throw new Error("DEX Screener returned an invalid payload");
-  const pools: DexPool[] = [];
-  for (const pair of raw) {
-    if (!pair || typeof pair !== "object") continue;
-    const item = pair as Record<string, unknown>;
-    const price = finitePositive(item.priceUsd);
-    const liquidity = finitePositive((item.liquidity as Record<string, unknown> | undefined)?.usd);
-    const dex = typeof item.dexId === "string" ? item.dexId : null;
-    if (!price || !liquidity || !dex) continue;
-    pools.push({ dex, price, liquidity });
-  }
+  const pools = parseDexPools(raw, mint);
   const consensus = selectDexConsensus(pools, config.maxSourceDeviationBps);
   const liquidityUsd = consensus.reduce((sum, pool) => sum + pool.liquidity, 0);
   if (consensus.length < 2 || liquidityUsd < config.minimumLiquidityUsd)
@@ -64,6 +55,25 @@ export async function dexScreenerSample(
     },
     liquidityUsd,
   };
+}
+
+export function parseDexPools(raw: unknown[], mint: string): DexPool[] {
+  const pools: DexPool[] = [];
+  for (const pair of raw) {
+    if (!pair || typeof pair !== "object") continue;
+    const item = pair as Record<string, unknown>;
+    const baseMint = (item.baseToken as Record<string, unknown> | undefined)?.address;
+    // DexScreener's priceUsd always describes the base token. A token can also
+    // appear as the quote asset of unrelated pools, whose prices must not be
+    // attributed to the collateral mint.
+    if (baseMint !== mint) continue;
+    const price = finitePositive(item.priceUsd);
+    const liquidity = finitePositive((item.liquidity as Record<string, unknown> | undefined)?.usd);
+    const dex = typeof item.dexId === "string" ? item.dexId : null;
+    if (!price || !liquidity || !dex) continue;
+    pools.push({ dex, price, liquidity });
+  }
+  return pools;
 }
 
 export function selectDexConsensus(pools: DexPool[], toleranceBps: number): DexPool[] {
