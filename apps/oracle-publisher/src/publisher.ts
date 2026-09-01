@@ -142,7 +142,7 @@ export async function publishMarket(
   const oracle = decodePinocchioOracleConfiguration(oracleInfo.data);
   if (!oracle.sources.some((source) => source.equals(signer.publicKey)))
     throw new Error("This signer is not an immutable publisher for the market");
-  const prior = observationInfo ? decodePinocchioOracleObservation(observationInfo.data) : null;
+  let prior = observationInfo ? decodePinocchioOracleObservation(observationInfo.data) : null;
   const now = Math.floor(Date.now() / 1000);
   // The program requires the two immutable publishers to alternate. A report
   // is usable only after the other publisher has cross-checked the preceding
@@ -193,12 +193,30 @@ export async function publishMarket(
     throw new Error(
       `Price movement ${observationDeviationBps} bps exceeds market limit ${oracle.maxDeviationBps}`,
     );
+  // Pricing can take several seconds. Re-read the round before signing so a
+  // concurrent publisher cannot make this transaction use an obsolete
+  // sequence or publisher turn.
+  const latestObservationInfo = await connection.getAccountInfo(observationKey, "confirmed");
+  prior = latestObservationInfo
+    ? decodePinocchioOracleObservation(latestObservationInfo.data)
+    : null;
+  const submitNow = Math.floor(Date.now() / 1000);
+  const latestStale =
+    prior !== null &&
+    (prior.publishedAt > BigInt(submitNow) ||
+      BigInt(submitNow) - prior.publishedAt > BigInt(oracle.maxAgeSeconds));
+  const latestExpectedPublisher =
+    prior?.publisher.equals(PublicKey.default) && !latestStale
+      ? oracle.sources[1]
+      : oracle.sources[0];
+  if (!latestExpectedPublisher?.equals(signer.publicKey)) return null;
+
   const payload = encodePinocchioOracleObservation({
     price,
     confidenceBps: result.confidenceBps,
     deviationBps: observationDeviationBps,
     maxRecoverableUsdc,
-    publishedAt: BigInt(now),
+    publishedAt: BigInt(submitNow),
     sequence: (prior?.sequence ?? 0n) + 1n,
     bump,
   });
