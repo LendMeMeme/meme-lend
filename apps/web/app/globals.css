@@ -22,6 +22,9 @@
   --nav-hover: #f1f5f2;
   --button: #ffffff;
   --button-hover: #9aaba0;
+  --primary-button: #155d3d;
+  --primary-button-hover: #104b31;
+  --primary-button-text: #ffffff;
   --brand-ink: #eff8f1;
   --risk-border: #ead9ad;
   --risk-text: #69501f;
@@ -43,7 +46,7 @@
   --field: #070a08;
   --line: #1a211c;
   --line-strong: #2b352e;
-  --muted: #7f8b83;
+  --muted: #a3ada6;
   --green: #82d0a2;
   --green-strong: #a0e1b9;
   --green-soft: #10271b;
@@ -53,13 +56,16 @@
   --focus: rgba(130, 208, 162, 0.24);
   --nav-hover: rgba(255, 255, 255, 0.045);
   --button: #0b0f0c;
-  --button-hover: #56645b;
+  --button-hover: #3f4b43;
+  --primary-button: #235f42;
+  --primary-button-hover: #2b704e;
+  --primary-button-text: #f5fff8;
   --brand-ink: #0d1a12;
   --risk-border: #57482d;
   --risk-text: #e6c98f;
   --risk-strong: #f0d7a5;
   --badge-border: #315b42;
-  --placeholder: #68736c;
+  --placeholder: #89948d;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
   --page-glow: rgba(35, 94, 59, 0.1);
   --page-top: #050806;
@@ -203,22 +209,24 @@ select:focus-visible {
   box-shadow: none !important;
   cursor: pointer;
   transition:
-    transform 150ms ease,
     border-color 150ms ease,
-    box-shadow 150ms ease;
+    background-color 150ms ease;
 }
 .button:hover,
 .wallet-adapter-button:hover,
 .theme-toggle:hover {
   border-color: var(--button-hover) !important;
-  box-shadow: var(--shadow) !important;
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--button) 88%, var(--ink) 12%) !important;
 }
 .button.primary {
-  background: var(--green-strong) !important;
-  border-color: var(--green-strong) !important;
-  color: #fff !important;
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--green) 22%, transparent) !important;
+  background: var(--primary-button) !important;
+  border-color: var(--primary-button) !important;
+  color: var(--primary-button-text) !important;
+  box-shadow: none !important;
+}
+.button.primary:hover {
+  background: var(--primary-button-hover) !important;
+  border-color: var(--primary-button-hover) !important;
 }
 .button:disabled {
   cursor: not-allowed;
