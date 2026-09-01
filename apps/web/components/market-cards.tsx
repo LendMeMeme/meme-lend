@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarketView } from "@meme-lend/shared";
-import { formatApr } from "@/lib/rates";
+import { formatApr, formatPeriodEstimate } from "@/lib/rates";
 
 const money = (raw: string | null | undefined) =>
   `${(Number(raw ?? "0") / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`;
@@ -22,8 +22,19 @@ export function MarketCards({ markets }: { markets: MarketView[] }) {
               <div>
                 <dt>Lenders earn</dt>
                 <dd>
-                  {formatApr(market.supplyAprBps)}{" "}
-                  {market.supplyAprBps == null ? null : <small>variable</small>}
+                  {formatApr(market.supplyAprBps)}
+                  {market.supplyAprBps == null ? null : (
+                    <small>{formatPeriodEstimate(market.supplyAprBps, 1)} per day</small>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Borrowers pay</dt>
+                <dd>
+                  {formatApr(market.borrowAprBps)}
+                  {market.borrowAprBps == null ? null : (
+                    <small>{formatPeriodEstimate(market.borrowAprBps, 1)} per day</small>
+                  )}
                 </dd>
               </div>
               <div>

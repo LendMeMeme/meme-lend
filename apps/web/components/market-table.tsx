@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { MarketView } from "@meme-lend/shared";
-import { formatApr } from "@/lib/rates";
+import { formatApr, formatPeriodEstimate } from "@/lib/rates";
 import {
   hasActiveBorrowing,
   liquidityTier,
@@ -84,11 +84,15 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                   </td>
                   <td>
                     <strong>{formatApr(market.supplyAprBps)}</strong>
-                    {market.supplyAprBps == null ? null : <small>variable estimate</small>}
+                    {market.supplyAprBps == null ? null : (
+                      <small>{formatPeriodEstimate(market.supplyAprBps, 1)} per day</small>
+                    )}
                   </td>
                   <td>
                     <strong>{formatApr(market.borrowAprBps)}</strong>
-                    {market.borrowAprBps == null ? null : <small>variable rate</small>}
+                    {market.borrowAprBps == null ? null : (
+                      <small>{formatPeriodEstimate(market.borrowAprBps, 1)} per day</small>
+                    )}
                   </td>
                   <td>
                     <strong>{money(market.availableUsdc)} available</strong>

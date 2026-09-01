@@ -59,13 +59,21 @@ export default async function MarketPage({ params }: Props) {
         <div className="stat">
           <span>Lenders currently earn</span>
           <strong>
-            {formatApr(m.supplyAprBps)} <small>variable estimate</small>
+            {formatApr(m.supplyAprBps)}
+            {m.supplyAprBps == null ? null : (
+              <small>{formatPeriodEstimate(m.supplyAprBps, 1)} per day</small>
+            )}
           </strong>
           {m.supplyAprBps === 0 ? <small>No USDC has been borrowed yet.</small> : null}
         </div>
         <div className="stat">
           <span>Borrowers currently pay</span>
-          <strong>{formatApr(m.borrowAprBps)}</strong>
+          <strong>
+            {formatApr(m.borrowAprBps)}
+            {m.borrowAprBps == null ? null : (
+              <small>{formatPeriodEstimate(m.borrowAprBps, 1)} per day</small>
+            )}
+          </strong>
         </div>
         <div className="stat">
           <span>Available USDC</span>
