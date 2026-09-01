@@ -95,7 +95,12 @@ export async function jupiterSample(mint: string, config: PublisherConfig): Prom
   const item = raw[mint] as Record<string, unknown> | undefined;
   const priceUsd = finitePositive(item?.usdPrice ?? item?.price);
   if (!priceUsd) throw new Error("Jupiter returned no usable price");
-  return { source: "jupiter", priceUsd, confidenceBps: 100, publishedAt: Date.now() / 1000 };
+  return {
+    source: "jupiter",
+    priceUsd,
+    confidenceBps: 100,
+    publishedAt: Math.floor(Date.now() / 1000),
+  };
 }
 
 export async function pythSample(mint: string, config: PublisherConfig): Promise<PriceSample> {
