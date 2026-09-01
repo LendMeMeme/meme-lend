@@ -5,13 +5,16 @@
 - Program: `8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
 - Program-data account: `GAWfb2YEN4CYsuUTQKT5Mwrb27XvKddjUgT5BHxjruVg`
 - Upgrade authority: `C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi`
-- Final verified deployment slot: `443376603`
+- Final verified deployment slot: `443381516`
 - Deployment transaction: `3eKgxAPV2iVyFzNzq4A1tJ2sR8TqhrS54triC1veymdUUA4iek8XyC3JNZPw7j6o4ZFfEeZBexDsGRCRnMCjfLeC`
-- Verification upgrade transaction: `2WKMJGZ8bZWY4MZJXduGZzK67QyjjkvAhXALsK2iEmWJVi9pnTNjU7SXxUjHkNJrHDu22rhybtnxvJseRiZF8owS`
-- Release source revision: `14b64263a3a261a3996beab36f6eaf5f47e880d6`
-- Public verification workflow: `https://github.com/LendMeMeme/meme-lend/actions/runs/33486042225`
-- Release ELF: 146,056 bytes, SHA-256
-  `bcebf2cdd9b15e7ca41cd8f0aec70b50aba2cdab0de542f632cc505565cf58c7`
+- Verification upgrade transaction: `2gqHs2SLGutw8idTsfWjkPWL27gV3QT6BfFJWtMuUTLpwX49HYzFYZCGeJKhwxP39uLJmY2GoR6wXWwbk1L8XSm8`
+- Verification PDA transaction: `ie7Sgmh6tsptzJmN7vKf3dHqti1GnPSV2qZEgTSfFbYp8YN3bUCC4AwxJrxfRYJFPc5gJTX7fwWrA2Bayb8zPDe`
+- Verification PDA: `C6CppStsMU85RncZg9pBZTuFWexev7CJJEmAER5yynZD`
+- Release source revision: `741bdca2534b0068bfd189db7e84d68d2f5a59cf`
+- OtterSec verification: `https://verify.osec.io/status/8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
+- Release ELF: 149,576 bytes, SHA-256
+  `f37a3785bf8a72374a29b0f67d2301e838e35bbb1e7501d1434e35af98b8bd9a`
+- Verified executable hash: `4ce8a99bba80ec5d53af0ef58f3c6d6ca27de10b37479ea5f3a87fb264c5444d`
 - Program-data allocation: 292,112 bytes; the release ELF matches the on-chain prefix exactly and
   all remaining upgrade-capacity bytes are zero.
 
