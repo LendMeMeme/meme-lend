@@ -5,11 +5,13 @@
 - Program: `8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
 - Program-data account: `GAWfb2YEN4CYsuUTQKT5Mwrb27XvKddjUgT5BHxjruVg`
 - Upgrade authority: `C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi`
-- Deployment slot: `443374997`
+- Final verified deployment slot: `443376603`
 - Deployment transaction: `3eKgxAPV2iVyFzNzq4A1tJ2sR8TqhrS54triC1veymdUUA4iek8XyC3JNZPw7j6o4ZFfEeZBexDsGRCRnMCjfLeC`
-- Release source revision: `897d700ac9dc5895aac4a41ccbb545d9ee38c777`
+- Verification upgrade transaction: `2WKMJGZ8bZWY4MZJXduGZzK67QyjjkvAhXALsK2iEmWJVi9pnTNjU7SXxUjHkNJrHDu22rhybtnxvJseRiZF8owS`
+- Release source revision: `14b64263a3a261a3996beab36f6eaf5f47e880d6`
+- Public verification workflow: `https://github.com/LendMeMeme/meme-lend/actions/runs/33486042225`
 - Release ELF: 146,056 bytes, SHA-256
-  `0fda8437ad849fd9509f1f2b18d490f9e273e145b5db53ccbc22bd81b8883576`
+  `bcebf2cdd9b15e7ca41cd8f0aec70b50aba2cdab0de542f632cc505565cf58c7`
 - Program-data allocation: 292,112 bytes; the release ELF matches the on-chain prefix exactly and
   all remaining upgrade-capacity bytes are zero.
 
