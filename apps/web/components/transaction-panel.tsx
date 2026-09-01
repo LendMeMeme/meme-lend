@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Transaction } from "@solana/web3.js";
 import { buildMarketTransaction, type MarketAction } from "@/lib/transactions";
+import { confirmSignatureByPolling } from "@/lib/confirmation";
 type Action = MarketAction;
 export function TransactionPanel({
   action,
@@ -65,9 +66,12 @@ export function TransactionPanel({
       const signature = await sendTransaction(reviewed, connection, {
         preflightCommitment: "confirmed",
       });
-      const result = await connection.confirmTransaction(signature, "confirmed");
-      if (result.value.err)
-        throw new Error(`Transaction failed: ${JSON.stringify(result.value.err)}`);
+      const blockhash = {
+        blockhash: reviewed.recentBlockhash!,
+        lastValidBlockHeight: (await connection.getLatestBlockhash("confirmed"))
+          .lastValidBlockHeight,
+      };
+      await confirmSignatureByPolling(connection, signature, blockhash);
       setMessage(`Confirmed transaction ${signature}`);
       setStatus("confirmed");
       setReviewed(null);
