@@ -24,6 +24,9 @@
 - Explicit signer, mint, authority, owner, and token-program validation.
 - Checked fixed-point math with conservative rounding and bounded parameters.
 - Strict Token-2022 extension allowlist.
+- Two-publisher oracle rounds that conservatively combine price, confidence, deviation, liquidity,
+  and time; neither publisher can independently create a usable observation.
+- Virtual lender assets and shares to prevent profitable first-depositor donation inflation.
 - Multiple RPC endpoints, finalized backfill, idempotent indexing, and direct-chain confirmation.
 - Secured offline upgrade authority (preferably multisig/timelocked), independent audits, and public
   deployment manifests. A single authority is explicitly treated as a critical operational risk.

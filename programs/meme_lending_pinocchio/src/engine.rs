@@ -66,7 +66,7 @@ pub fn accrue_market(market: &mut Market, cash: u64, now: i64) -> Result<u64, Pr
         model.max,
     )?;
     let new_index = math::accrue_index(market.borrow_index, rate, elapsed as u64)?;
-    let new_debt = math::mul_div_ceil(market.total_debt, new_index, market.borrow_index)?;
+    let new_debt = math::total_debt_from_shares(market.total_borrow_shares, new_index)?;
     let interest = new_debt
         .checked_sub(market.total_debt)
         .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -107,6 +107,7 @@ pub fn validate_oracle(
     now: i64,
 ) -> Result<(), ProgramError> {
     if config.market != observation.market
+        || observation.publisher == [0; 32]
         || observation.price == 0
         || observation.max_recoverable_usdc == 0
         || observation.confidence_bps > config.max_confidence_bps
@@ -121,6 +122,71 @@ pub fn validate_oracle(
         return Err(ProgramError::InvalidArgument);
     }
     Ok(())
+}
+
+pub struct OracleTransition {
+    pub publisher: [u8; 32],
+    pub price: u128,
+    pub confidence_bps: u16,
+    pub deviation_bps: u16,
+    pub max_recoverable_usdc: u64,
+    pub published_at: i64,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn validate_oracle_transition(
+    config: &OracleConfiguration,
+    previous: &OracleObservation,
+    publisher: &[u8; 32],
+    price: u128,
+    confidence_bps: u16,
+    deviation_bps: u16,
+    max_recoverable_usdc: u64,
+    published_at: i64,
+    sequence: u64,
+    now: i64,
+) -> Result<OracleTransition, ProgramError> {
+    let previous_age = now
+        .checked_sub(previous.published_at)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    if previous.market != config.market || sequence <= previous.sequence || previous_age < 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Source zero always starts a new round. The zero publisher sentinel makes
+    // that pending report unusable for borrowing until source one confirms it.
+    if previous.publisher != [0; 32] || previous_age > i64::from(config.max_age_seconds) {
+        if publisher != &config.sources[0] {
+            return Err(ProgramError::InvalidArgument);
+        }
+        return Ok(OracleTransition {
+            publisher: [0; 32],
+            price,
+            confidence_bps,
+            deviation_bps,
+            max_recoverable_usdc,
+            published_at,
+        });
+    }
+
+    if publisher != &config.sources[1] || published_at < previous.published_at {
+        return Err(ProgramError::InvalidArgument);
+    }
+    let observed_deviation = math::price_deviation_bps(previous.price, price)?;
+    if observed_deviation > config.max_deviation_bps {
+        return Err(ProgramError::InvalidArgument);
+    }
+    Ok(OracleTransition {
+        publisher: *publisher,
+        price: previous.price.min(price),
+        confidence_bps: previous.confidence_bps.max(confidence_bps),
+        deviation_bps: previous
+            .deviation_bps
+            .max(deviation_bps)
+            .max(observed_deviation),
+        max_recoverable_usdc: previous.max_recoverable_usdc.min(max_recoverable_usdc),
+        published_at: previous.published_at.min(published_at),
+    })
 }
 
 pub fn require_healthy(
@@ -144,7 +210,9 @@ pub fn require_healthy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{AccountHeader, AccountKind, STATE_VERSION};
+    use crate::state::{
+        AccountHeader, AccountKind, OracleKind, ORACLE_FLAG_CUSTOM_HIGH_RISK, STATE_VERSION,
+    };
 
     fn market() -> Market {
         Market {
@@ -194,5 +262,64 @@ mod tests {
         let market = market();
         assert_eq!(net_market_assets(&market, 50_000).unwrap(), 100_000);
         // Oracle validation is intentionally a separate function; repay/deposit handlers do not call it.
+    }
+
+    #[test]
+    fn oracle_requires_fresh_alternating_publishers_with_bounded_prices() {
+        let config = OracleConfiguration {
+            header: AccountHeader {
+                version: STATE_VERSION,
+                kind: AccountKind::OracleConfiguration,
+                bump: 1,
+            },
+            market: [9; 32],
+            kind: OracleKind::Custom,
+            max_age_seconds: 120,
+            max_confidence_bps: 500,
+            max_deviation_bps: 1_000,
+            price_decimals: 18,
+            source_count: 2,
+            sources: [[1; 32], [2; 32], [0; 32], [0; 32], [0; 32]],
+            flags: ORACLE_FLAG_CUSTOM_HIGH_RISK,
+        };
+        let pending = OracleObservation {
+            header: AccountHeader {
+                version: STATE_VERSION,
+                kind: AccountKind::OracleObservation,
+                bump: 2,
+            },
+            market: [9; 32],
+            publisher: [0; 32],
+            price: 100,
+            confidence_bps: 100,
+            deviation_bps: 0,
+            max_recoverable_usdc: 1_000_000,
+            published_at: 1_000,
+            sequence: 1,
+        };
+        let confirmed = validate_oracle_transition(
+            &config, &pending, &[2; 32], 105, 200, 100, 900_000, 1_001, 2, 1_001,
+        )
+        .unwrap();
+        assert_eq!(confirmed.publisher, [2; 32]);
+        assert_eq!(confirmed.price, 100);
+        assert_eq!(confirmed.confidence_bps, 200);
+        assert_eq!(confirmed.deviation_bps, 500);
+        assert_eq!(confirmed.max_recoverable_usdc, 900_000);
+        assert!(validate_oracle_transition(
+            &config, &pending, &[1; 32], 105, 200, 100, 900_000, 1_001, 2, 1_001,
+        )
+        .is_err());
+        assert!(validate_oracle_transition(
+            &config, &pending, &[2; 32], 150, 200, 100, 900_000, 1_001, 2, 1_001,
+        )
+        .is_err());
+
+        let restarted = validate_oracle_transition(
+            &config, &pending, &[1; 32], 110, 100, 100, 800_000, 1_200, 3, 1_200,
+        )
+        .unwrap();
+        assert_eq!(restarted.publisher, [0; 32]);
+        assert_eq!(restarted.price, 110);
     }
 }

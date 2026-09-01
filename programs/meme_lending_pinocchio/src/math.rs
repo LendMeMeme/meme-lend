@@ -83,13 +83,15 @@ pub fn assets_to_shares(assets: u64, total_assets: u128, total_shares: u128) -> 
     if assets == 0 {
         return Err(invalid());
     }
-    if total_shares == 0 {
-        return Ok(u128::from(assets));
-    }
-    if total_assets == 0 {
-        return Err(invalid());
-    }
-    let shares = mul_div_floor(u128::from(assets), total_shares, total_assets)?;
+    let shares = mul_div_floor(
+        u128::from(assets),
+        total_shares
+            .checked_add(VIRTUAL_SUPPLY_SHARES)
+            .ok_or_else(invalid)?,
+        total_assets
+            .checked_add(VIRTUAL_SUPPLY_ASSETS)
+            .ok_or_else(invalid)?,
+    )?;
     (shares > 0).then_some(shares).ok_or_else(invalid)
 }
 
@@ -97,7 +99,15 @@ pub fn shares_to_assets(shares: u128, total_assets: u128, total_shares: u128) ->
     if shares == 0 || total_shares == 0 {
         return Err(invalid());
     }
-    let assets = mul_div_floor(shares, total_assets, total_shares)?;
+    let assets = mul_div_floor(
+        shares,
+        total_assets
+            .checked_add(VIRTUAL_SUPPLY_ASSETS)
+            .ok_or_else(invalid)?,
+        total_shares
+            .checked_add(VIRTUAL_SUPPLY_SHARES)
+            .ok_or_else(invalid)?,
+    )?;
     if assets == 0 {
         return Err(invalid());
     }
@@ -113,6 +123,26 @@ pub fn debt_to_shares_ceil(debt: u64, index: u128) -> MathResult<u128> {
 
 pub fn shares_to_debt_ceil(shares: u128, index: u128) -> MathResult<u64> {
     u64::try_from(mul_div_ceil(shares, index, RATE_SCALE)?).map_err(|_| invalid())
+}
+
+pub fn total_debt_from_shares(shares: u128, index: u128) -> MathResult<u128> {
+    if index == 0 {
+        return Err(invalid());
+    }
+    mul_div_ceil(shares, index, RATE_SCALE)
+}
+
+pub fn price_deviation_bps(left: u128, right: u128) -> MathResult<u16> {
+    let denominator = left.min(right);
+    if denominator == 0 {
+        return Err(invalid());
+    }
+    let deviation = mul_div_ceil(
+        left.abs_diff(right),
+        u128::from(BPS_DENOMINATOR),
+        denominator,
+    )?;
+    u16::try_from(deviation.min(u128::from(u16::MAX))).map_err(|_| invalid())
 }
 
 pub fn collateral_value(
@@ -290,5 +320,18 @@ mod tests {
         assert!(mul_div_floor(1, 1, 0).is_err());
         assert!(mul_div_floor(u128::MAX, 2, 1).is_err());
         assert!(liquidation_shares_to_burn(2, 1, 1).is_err());
+    }
+
+    #[test]
+    fn virtual_liquidity_blocks_donation_share_inflation() {
+        assert_eq!(assets_to_shares(1, 0, 0).unwrap(), 1);
+        assert!(assets_to_shares(1_000_000, 1_000_001, 1).unwrap() > 300_000);
+    }
+
+    #[test]
+    fn debt_totals_and_price_deviation_round_conservatively() {
+        assert_eq!(total_debt_from_shares(1, RATE_SCALE + 1).unwrap(), 2);
+        assert_eq!(price_deviation_bps(100, 110).unwrap(), 1_000);
+        assert_eq!(price_deviation_bps(110, 100).unwrap(), 1_000);
     }
 }

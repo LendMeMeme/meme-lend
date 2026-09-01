@@ -11,11 +11,15 @@ Before a deposit or withdrawal, interest is accrued. Market assets are:
 cash + performing debt - earned protocol fees - earned creator fees
 ```
 
-When no shares exist, deposited assets mint shares one-for-one in normalized units. Otherwise:
+Conversions include a permanent virtual asset/share seed. It preserves one-for-one issuance for an
+empty market while preventing a first depositor from profiting by donating assets before another
+deposit. The effective formulas are:
 
 ```text
-deposit shares = floor(deposit assets * total shares / assets before deposit)
-withdraw assets = floor(burned shares * total assets / total shares)
+deposit shares = floor(deposit assets * (total shares + virtual shares)
+                       / (assets before deposit + virtual assets))
+withdraw assets = floor(burned shares * (total assets + virtual assets)
+                        / (total shares + virtual shares))
 ```
 
 Deposits that round to zero shares and withdrawals that round to zero assets fail. Rounding never
@@ -23,8 +27,10 @@ creates a claim larger than market assets.
 
 ## Borrow debt
 
-Debt uses borrow shares and a monotonically non-decreasing borrow index. Accrued interest is rounded
-up. Repayment is capped at actual debt, and full repayment clears residual dust explicitly.
+Debt uses borrow shares and a monotonically non-decreasing borrow index. Aggregate market debt is
+always derived from aggregate shares and the current index, including after borrow, repayment,
+liquidation, bad-debt handling, and accrual. Accrued interest is rounded up. Repayment is capped at
+actual debt, and full repayment clears residual dust explicitly.
 
 ## Interest model
 

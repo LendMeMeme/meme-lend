@@ -8,8 +8,8 @@ use pinocchio::{
 use crate::{
     codec::Decoder,
     constants::{
-        ALLOWED_LLTV_BPS, MAX_LIQUIDATION_BONUS_BPS, MAX_ORACLE_SOURCES, MAX_TOKEN_DECIMALS,
-        MAX_TOTAL_FEE_BPS, RATE_SCALE,
+        ALLOWED_LLTV_BPS, MAX_LIQUIDATION_BONUS_BPS, MAX_TOKEN_DECIMALS, MAX_TOTAL_FEE_BPS,
+        RATE_SCALE,
     },
     cpi::{create_program_account, create_token_account},
     pda::{
@@ -323,18 +323,19 @@ pub fn create_market(
         || rate_model_id > 1
         || market_borrow_cap == 0
         || wallet_borrow_cap == 0
+        || wallet_borrow_cap > market_borrow_cap
         || oracle_kind != OracleKind::Custom as u8
         || oracle_max_age_seconds == 0
         || oracle_max_age_seconds > global.max_oracle_age_seconds
         || oracle_max_confidence_bps > 10_000
         || oracle_max_deviation_bps > 10_000
         || oracle_price_decimals > MAX_TOKEN_DECIMALS
-        || source_count == 0
-        || usize::from(source_count) > MAX_ORACLE_SOURCES
+        || source_count != 2
     {
         return Err(ProgramError::InvalidArgument);
     }
     if sources[..usize::from(source_count)].contains(&[0; 32])
+        || sources[0] == sources[1]
         || sources[usize::from(source_count)..]
             .iter()
             .any(|source| *source != [0; 32])
@@ -1034,10 +1035,8 @@ pub fn repay_usdc(
         .total_borrow_shares
         .checked_sub(shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    market.total_debt = market
-        .total_debt
-        .checked_sub(u128::from(amount))
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_debt =
+        crate::math::total_debt_from_shares(market.total_borrow_shares, market.borrow_index)?;
     position.encode(&mut position_account.try_borrow_mut()?)?;
     market.encode(&mut market_account.try_borrow_mut()?)
 }
@@ -1242,18 +1241,18 @@ pub fn borrow_usdc(
         return Err(ProgramError::InsufficientFunds);
     }
     crate::engine::accrue_market(&mut market, cash, now)?;
-    let current_debt = if position.borrow_shares == 0 {
-        0
-    } else {
-        crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?
-    };
-    let resulting_debt = current_debt
-        .checked_add(amount)
+    let shares = crate::math::debt_to_shares_ceil(amount, market.borrow_index)?;
+    let resulting_shares = position
+        .borrow_shares
+        .checked_add(shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    let total_debt = market
-        .total_debt
-        .checked_add(u128::from(amount))
+    let resulting_debt = crate::math::shares_to_debt_ceil(resulting_shares, market.borrow_index)?;
+    let resulting_total_shares = market
+        .total_borrow_shares
+        .checked_add(shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+    let total_debt =
+        crate::math::total_debt_from_shares(resulting_total_shares, market.borrow_index)?;
     if total_debt > u128::from(market.market_borrow_cap)
         || resulting_debt > market.wallet_borrow_cap
         || resulting_debt > observation.max_recoverable_usdc
@@ -1268,15 +1267,8 @@ pub fn borrow_usdc(
         oracle_config.price_decimals,
         market.lltv_bps,
     )?;
-    let shares = crate::math::debt_to_shares_ceil(amount, market.borrow_index)?;
-    position.borrow_shares = position
-        .borrow_shares
-        .checked_add(shares)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    market.total_borrow_shares = market
-        .total_borrow_shares
-        .checked_add(shares)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    position.borrow_shares = resulting_shares;
+    market.total_borrow_shares = resulting_total_shares;
     market.total_debt = total_debt;
     let bump = [market.authority_bump];
     let signer_seeds = pinocchio::instruction::seeds!(
@@ -1465,7 +1457,7 @@ pub fn submit_oracle_observation(
     {
         return Err(ProgramError::InvalidArgument);
     }
-    let header = if observation_account.is_data_empty() {
+    let (header, transition) = if observation_account.is_data_empty() {
         if publisher_bytes != config.sources[0] {
             return Err(ProgramError::InvalidArgument);
         }
@@ -1484,11 +1476,21 @@ pub fn submit_oracle_observation(
             OracleObservation::LEN,
             &Signer::from(&signer_seeds),
         )?;
-        AccountHeader {
-            version: STATE_VERSION,
-            kind: AccountKind::OracleObservation,
-            bump,
-        }
+        (
+            AccountHeader {
+                version: STATE_VERSION,
+                kind: AccountKind::OracleObservation,
+                bump,
+            },
+            crate::engine::OracleTransition {
+                publisher: [0; 32],
+                price,
+                confidence_bps,
+                deviation_bps,
+                max_recoverable_usdc,
+                published_at,
+            },
+        )
     } else {
         validation::owner(observation_account, program_id)?;
         let previous = OracleObservation::decode(&observation_account.try_borrow()?)?;
@@ -1498,23 +1500,29 @@ pub fn submit_oracle_observation(
             previous.header.bump,
             program_id,
         )?;
-        if previous.market != *market_account.address().as_array()
-            || sequence <= previous.sequence
-            || published_at < previous.published_at
-        {
-            return Err(ProgramError::InvalidArgument);
-        }
-        previous.header
+        let transition = crate::engine::validate_oracle_transition(
+            &config,
+            &previous,
+            &publisher_bytes,
+            price,
+            confidence_bps,
+            deviation_bps,
+            max_recoverable_usdc,
+            published_at,
+            sequence,
+            now,
+        )?;
+        (previous.header, transition)
     };
     OracleObservation {
         header,
         market: *market_account.address().as_array(),
-        publisher: publisher_bytes,
-        price,
-        confidence_bps,
-        deviation_bps,
-        max_recoverable_usdc,
-        published_at,
+        publisher: transition.publisher,
+        price: transition.price,
+        confidence_bps: transition.confidence_bps,
+        deviation_bps: transition.deviation_bps,
+        max_recoverable_usdc: transition.max_recoverable_usdc,
+        published_at: transition.published_at,
         sequence,
     }
     .encode(&mut observation_account.try_borrow_mut()?)
@@ -1887,10 +1895,8 @@ pub fn liquidate(program_id: &Address, accounts: &mut [AccountView], data: &[u8]
         .total_borrow_shares
         .checked_sub(shares)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    market.total_debt = market
-        .total_debt
-        .checked_sub(u128::from(repaid))
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    market.total_debt =
+        crate::math::total_debt_from_shares(market.total_borrow_shares, market.borrow_index)?;
     if position.collateral_amount == 0 && position.borrow_shares > 0 {
         let bad_debt =
             crate::math::shares_to_debt_ceil(position.borrow_shares, market.borrow_index)?;
@@ -1898,11 +1904,9 @@ pub fn liquidate(program_id: &Address, accounts: &mut [AccountView], data: &[u8]
             .total_borrow_shares
             .checked_sub(position.borrow_shares)
             .ok_or(ProgramError::ArithmeticOverflow)?;
-        market.total_debt = market
-            .total_debt
-            .checked_sub(u128::from(bad_debt))
-            .ok_or(ProgramError::ArithmeticOverflow)?;
         position.borrow_shares = 0;
+        market.total_debt =
+            crate::math::total_debt_from_shares(market.total_borrow_shares, market.borrow_index)?;
         market.bad_debt = market
             .bad_debt
             .checked_add(bad_debt)

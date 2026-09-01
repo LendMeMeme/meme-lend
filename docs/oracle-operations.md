@@ -24,6 +24,13 @@ If validation fails, no observation is published. Once the prior observation exp
 collateral withdrawal, and liquidation fail closed. Repayment and collateral deposits remain
 available because those instructions do not depend on an oracle.
 
+Publishing is a two-signature on-chain round. The primary opens a pending report, which cannot be
+used by borrowing or withdrawal. The backup confirms it with an independently collected report.
+The program then stores the lower price and recoverable-liquidity limit, the higher confidence and
+deviation, and the older timestamp. It rejects mismatched publishers, excessive price divergence,
+and incomplete rounds. The primary can replace an expired pending round so an outage cannot lock
+the oracle permanently.
+
 ## Publisher separation and failover
 
 Every frontend-created market freezes these two publisher addresses into its immutable oracle
@@ -33,9 +40,9 @@ configuration:
 - backup: `GsoCUeJyngZMnt4Mm9Uptgavp9Poq1EskoKUou8ackGV`
 
 Run two isolated Railway services from the same repository and give each only its own keypair secret.
-The primary uses `ORACLE_STANDBY=false`. The backup uses `ORACLE_STANDBY=true` and publishes only when
-the previous observation is older than `ORACLE_FAILOVER_AFTER_SECONDS`. Use different RPC providers,
-price-provider credentials, deployment regions, and alert destinations where possible.
+The primary opens each round and the backup confirms it. The service derives its required role from
+the on-chain observation, so neither publisher can create a usable observation alone. Use different
+RPC providers, price-provider credentials, deployment regions, and alert destinations where possible.
 
 Never place either secret key in GitHub, frontend variables, build logs, or MongoDB. The local keys
 are stored outside the repository under the user's Solana configuration directory.

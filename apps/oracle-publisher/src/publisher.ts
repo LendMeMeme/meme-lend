@@ -77,13 +77,18 @@ export async function publishMarket(
     throw new Error("This signer is not an immutable publisher for the market");
   const prior = observationInfo ? decodePinocchioOracleObservation(observationInfo.data) : null;
   const now = Math.floor(Date.now() / 1000);
-  if (
-    config.standby &&
-    prior &&
-    prior.publishedAt <= BigInt(now) &&
-    BigInt(now) - prior.publishedAt <= BigInt(config.failoverAfterSeconds)
-  )
-    return null;
+  // The program requires the two immutable publishers to alternate. A report
+  // is usable only after the other publisher has cross-checked the preceding
+  // fresh report, so neither key can unilaterally keep an oracle live.
+  const priorStale =
+    prior !== null &&
+    (prior.publishedAt > BigInt(now) ||
+      BigInt(now) - prior.publishedAt > BigInt(oracle.maxAgeSeconds));
+  const expectedPublisher =
+    prior?.publisher.equals(PublicKey.default) && !priorStale
+      ? oracle.sources[1]
+      : oracle.sources[0];
+  if (!expectedPublisher?.equals(signer.publicKey)) return null;
   const result = await aggregatePrice(market.collateralMint.toBase58(), config);
   if (result.confidenceBps > oracle.maxConfidenceBps)
     throw new Error(
