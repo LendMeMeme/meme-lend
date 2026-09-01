@@ -29,6 +29,7 @@ export function publisherConfig() {
     intervalMs: Number(process.env.ORACLE_INTERVAL_MS ?? "15000"),
     maxSourceDeviationBps: Number(process.env.ORACLE_MAX_SOURCE_DEVIATION_BPS ?? "500"),
     sourceMaxAgeSeconds: Number(process.env.ORACLE_SOURCE_MAX_AGE_SECONDS ?? "30"),
+    refreshLeadSeconds: Number(process.env.ORACLE_REFRESH_LEAD_SECONDS ?? "20"),
     liquidityHaircutBps: Number(process.env.ORACLE_LIQUIDITY_HAIRCUT_BPS ?? "200"),
     maxRecoverableUsdc: Number(process.env.ORACLE_MAX_RECOVERABLE_USDC ?? "25000"),
     minimumLiquidityUsd: Number(process.env.ORACLE_MINIMUM_LIQUIDITY_USD ?? "10000"),
@@ -89,6 +90,8 @@ export function assertConfig(config: PublisherConfig): void {
     throw new Error("Liquidity thresholds must be positive");
   if (!Number.isInteger(config.sourceMaxAgeSeconds) || config.sourceMaxAgeSeconds < 5)
     throw new Error("ORACLE_SOURCE_MAX_AGE_SECONDS must be at least 5");
+  if (!Number.isInteger(config.refreshLeadSeconds) || config.refreshLeadSeconds < 5)
+    throw new Error("ORACLE_REFRESH_LEAD_SECONDS must be at least 5");
   if (!Number.isInteger(config.failoverAfterSeconds) || config.failoverAfterSeconds < 15)
     throw new Error("ORACLE_FAILOVER_AFTER_SECONDS must be at least 15");
   if (!Number.isInteger(config.minimumBalanceLamports) || config.minimumBalanceLamports < 0)

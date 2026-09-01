@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { CreateMarketForm } from "@/components/create-market-form";
 export const metadata: Metadata = { title: "Create Market" };
-export default function CreateMarketPage() {
+export default async function CreateMarketPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ strategy?: string }>;
+}) {
+  const { strategy } = await searchParams;
   return (
     <main className="shell">
       <header className="page-head">
@@ -12,7 +17,7 @@ export default function CreateMarketPage() {
         </p>
       </header>
       <div className="grid section">
-        <CreateMarketForm />
+        <CreateMarketForm initialStrategy={strategy} />
         <aside className="span-5">
           <div className="card panel warning">
             USDC is the fixed loan asset; the mint entered here is the memecoin collateral. Creating

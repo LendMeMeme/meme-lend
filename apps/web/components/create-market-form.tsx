@@ -14,6 +14,7 @@ import {
   type RateShape,
   validateRateCurve,
 } from "@meme-lend/sdk";
+import { strategyById } from "@/lib/strategies";
 
 type RateChoice = keyof typeof RATE_MODELS | "advanced";
 const utilizationPoints = [0, 25, 50, 75, 90, 100] as const;
@@ -31,6 +32,12 @@ const aprLabel = (apr: bigint) => {
   const whole = scaled / 1_000n;
   const fraction = (scaled % 1_000n).toString().padStart(3, "0").replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}%` : `${whole}%`;
+};
+const aprInput = (apr: bigint) => {
+  const scaled = (apr * 100_000_000n) / RATE_SCALE;
+  const whole = scaled / 1_000_000n;
+  const fraction = (scaled % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
 };
 
 async function errorMessage(error: unknown, connection: Connection) {
@@ -51,19 +58,36 @@ async function errorMessage(error: unknown, connection: Connection) {
   return logs?.length ? `${message}\n${logs.slice(-8).join("\n")}` : message;
 }
 
-export function CreateMarketForm() {
+export function CreateMarketForm({ initialStrategy }: { initialStrategy?: string }) {
+  const selectedStrategy = strategyById(initialStrategy);
   const router = useRouter();
   const wallet = useWallet();
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
-  const [setupMode, setSetupMode] = useState<"basic" | "advanced">("basic");
-  const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(5000);
-  const [rateChoice, setRateChoice] = useState<RateChoice>("balanced");
-  const [startApr, setStartApr] = useState("2");
-  const [targetUtilization, setTargetUtilization] = useState("80");
-  const [targetApr, setTargetApr] = useState("20");
-  const [maximumApr, setMaximumApr] = useState("220");
-  const [rateShape, setRateShape] = useState<RateShape>(2);
+  const [setupMode, setSetupMode] = useState<"basic" | "advanced">(
+    selectedStrategy ? "advanced" : "basic",
+  );
+  const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(
+    selectedStrategy?.lltvBps ?? 5000,
+  );
+  const [rateChoice, setRateChoice] = useState<RateChoice>(
+    selectedStrategy ? "advanced" : "balanced",
+  );
+  const [startApr, setStartApr] = useState(
+    selectedStrategy ? aprInput(selectedStrategy.curve.startBorrowApr) : "2",
+  );
+  const [targetUtilization, setTargetUtilization] = useState(
+    selectedStrategy ? String(selectedStrategy.curve.targetUtilizationBps / 100) : "80",
+  );
+  const [targetApr, setTargetApr] = useState(
+    selectedStrategy ? aprInput(selectedStrategy.curve.targetBorrowApr) : "20",
+  );
+  const [maximumApr, setMaximumApr] = useState(
+    selectedStrategy ? aprInput(selectedStrategy.curve.maxBorrowApr) : "220",
+  );
+  const [rateShape, setRateShape] = useState<RateShape>(
+    selectedStrategy?.curve.aboveTargetShape ?? 2,
+  );
   const [extremeAcknowledged, setExtremeAcknowledged] = useState(false);
   const [marketCap, setMarketCap] = useState("");
   const [walletCap, setWalletCap] = useState("");
@@ -176,6 +200,15 @@ export function CreateMarketForm() {
   return (
     <section className="card panel span-7">
       <h2>Market configuration</h2>
+      {selectedStrategy ? (
+        <div className="strategy-prefill">
+          <strong>{selectedStrategy.title} settings loaded</strong>
+          <span>
+            Review and change them below. Nothing is submitted until you press Launch market and
+            approve it in your wallet.
+          </span>
+        </div>
+      ) : null}
       <div className="setup-choice" role="tablist" aria-label="Market setup level">
         <button
           type="button"

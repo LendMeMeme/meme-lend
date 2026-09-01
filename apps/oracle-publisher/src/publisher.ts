@@ -84,6 +84,14 @@ export async function publishMarket(
     prior !== null &&
     (prior.publishedAt > BigInt(now) ||
       BigInt(now) - prior.publishedAt > BigInt(oracle.maxAgeSeconds));
+  const priorAge = prior ? Math.max(0, now - Number(prior.publishedAt)) : null;
+  if (
+    prior &&
+    !prior.publisher.equals(PublicKey.default) &&
+    !priorStale &&
+    !shouldStartOracleRefresh(priorAge!, oracle.maxAgeSeconds, config.refreshLeadSeconds)
+  )
+    return null;
   const expectedPublisher =
     prior?.publisher.equals(PublicKey.default) && !priorStale
       ? oracle.sources[1]
@@ -135,6 +143,14 @@ export async function publishMarket(
     preflightCommitment: "confirmed",
   });
   return { market: marketKey.toBase58(), signature, sources: result.sources };
+}
+
+export function shouldStartOracleRefresh(
+  observationAgeSeconds: number,
+  maxAgeSeconds: number,
+  refreshLeadSeconds: number,
+): boolean {
+  return observationAgeSeconds >= Math.max(0, maxAgeSeconds - refreshLeadSeconds);
 }
 
 export function usdPriceToOracle(priceUsd: number, decimals: number): bigint {
