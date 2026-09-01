@@ -5,6 +5,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const requestedAt = new Map<string, number>();
+const recentResults = new Map<
+  string,
+  { accepted: boolean; published: boolean; errors: string[] }
+>();
 const COOLDOWN_MS = 10_000;
 
 export async function POST(request: NextRequest) {
@@ -16,8 +20,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid market" }, { status: 400 });
   }
   const now = Date.now();
-  if (now - (requestedAt.get(market) ?? 0) < COOLDOWN_MS)
-    return NextResponse.json({ accepted: true, rateLimited: true }, { status: 202 });
+  if (now - (requestedAt.get(market) ?? 0) < COOLDOWN_MS) {
+    const previous = recentResults.get(market);
+    return NextResponse.json(
+      previous ? { ...previous, rateLimited: true } : { accepted: true, rateLimited: true },
+      { status: 202 },
+    );
+  }
   requestedAt.set(market, now);
 
   const secret = process.env.ORACLE_REFRESH_SECRET?.trim();
@@ -58,8 +67,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json(
-    { accepted, published, errors: [...errors] },
-    { status: accepted ? 202 : 503 },
-  );
+  const response = { accepted, published, errors: [...errors] };
+  recentResults.set(market, response);
+  return NextResponse.json(response, { status: accepted ? 202 : 503 });
 }
