@@ -26,7 +26,7 @@ describe("fixed point math", () => {
 });
 
 describe("optimized program ABI", () => {
-  it("rejects uninitialized mints and Token-2022 extension data before submission", () => {
+  it("accepts safe Token-2022 metadata and rejects behavioral extensions", () => {
     const mint = new Uint8Array(82);
     mint[44] = 6;
     mint[45] = 1;
@@ -34,9 +34,18 @@ describe("optimized program ABI", () => {
     expect(() => validateSupportedMintData(new Uint8Array(82), TOKEN_PROGRAM_ID)).toThrow(
       "not an initialized token mint",
     );
+    const token2022Mint = new Uint8Array(174);
+    token2022Mint[44] = 6;
+    token2022Mint[45] = 1;
+    token2022Mint[165] = 1;
+    token2022Mint[166] = 18; // MetadataPointer
+    token2022Mint[168] = 4;
+    expect(validateSupportedMintData(token2022Mint, TOKEN_2022_PROGRAM_ID)).toBe(6);
+
+    token2022Mint[166] = 1; // TransferFeeConfig
     expect(() =>
-      validateSupportedMintData(new Uint8Array(166).fill(1), TOKEN_2022_PROGRAM_ID, "Collateral"),
-    ).toThrow("Token-2022 extensions");
+      validateSupportedMintData(token2022Mint, TOKEN_2022_PROGRAM_ID, "Collateral"),
+    ).toThrow("unsupported Token-2022 extension type 1");
   });
 
   it("derives and creates canonical associated token accounts without the SPL client bundle", () => {

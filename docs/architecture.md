@@ -37,7 +37,8 @@ vault as its own or socialize a loss outside its own state.
 
 The loan mint is governance-approved USDC. Legacy SPL Token and Token-2022 are identified from
 their actual program owners; callers cannot choose an inconsistent program. Token-2022 mints are
-accepted only when all extensions are explicitly allowed. The MVP rejects transfer fees, transfer
+accepted only when all extensions are explicitly allowed. Metadata pointer, token metadata, group
+pointer, token group, group-member pointer, and token-group member are allowed. The protocol rejects transfer fees, transfer
 hooks, permanent delegates, confidential transfers, pausable tokens, and other extensions that can
 change received balances or introduce external control.
 

@@ -107,7 +107,18 @@ pub fn mint_decimals(mint: &AccountView, token_program: &AccountView) -> Result<
         return Err(ProgramError::UninitializedAccount);
     }
     let mut extensions = [ExtensionType::Uninitialized; MAX_EXTENSIONS];
-    if state.write_extension_types(&mut extensions)? != 0 {
+    let extension_count = state.write_extension_types(&mut extensions)?;
+    if extensions[..extension_count].iter().any(|extension| {
+        !matches!(
+            extension,
+            ExtensionType::MetadataPointer
+                | ExtensionType::TokenMetadata
+                | ExtensionType::GroupPointer
+                | ExtensionType::TokenGroup
+                | ExtensionType::GroupMemberPointer
+                | ExtensionType::TokenGroupMember
+        )
+    }) {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(state.base.decimals())

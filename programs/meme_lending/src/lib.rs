@@ -5,7 +5,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, TransferChecked},
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
-use spl_token_2022::extension::{BaseStateWithExtensions, StateWithExtensions};
+use spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensions};
 
 #[cfg(not(feature = "no-entrypoint"))]
 solana_security_txt::security_txt! {
@@ -1300,11 +1300,19 @@ fn validate_token_extensions(mint: &AccountInfo) -> Result<()> {
     let data = mint.try_borrow_data()?;
     let state = StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&data)
         .map_err(|_| LendingError::UnsupportedToken)?;
+    let extensions = state
+        .get_extension_types()
+        .map_err(|_| LendingError::UnsupportedToken)?;
     require!(
-        state
-            .get_extension_types()
-            .map_err(|_| LendingError::UnsupportedToken)?
-            .is_empty(),
+        extensions.iter().all(|extension| matches!(
+            extension,
+            ExtensionType::MetadataPointer
+                | ExtensionType::TokenMetadata
+                | ExtensionType::GroupPointer
+                | ExtensionType::TokenGroup
+                | ExtensionType::GroupMemberPointer
+                | ExtensionType::TokenGroupMember
+        )),
         LendingError::UnsupportedTokenExtension
     );
     Ok(())

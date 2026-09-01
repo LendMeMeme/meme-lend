@@ -40,8 +40,9 @@ export default function DocsPage() {
         </p>
         <h2>Token-2022</h2>
         <p>
-          The protocol supports only explicitly allowed extensions. Transfer-fee, transfer-hook,
-          permanent-delegate, confidential-transfer, and pausable behavior is rejected in the MVP.
+          Token-2022 mints are supported with metadata and token-group extensions. Transfer-fee,
+          transfer-hook, permanent-delegate, confidential-transfer, and pausable behavior is
+          rejected in the MVP.
         </p>
       </article>
     </main>

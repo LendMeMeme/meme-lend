@@ -164,7 +164,8 @@ export function CreateMarketForm() {
           placeholder="Memecoin mint address"
         />
         <span className="help">
-          Token-2022 mints with unsupported extensions are rejected by the program.
+          Token-2022 is supported. Metadata and token-group extensions are allowed; extensions that
+          can change balances, fees, transfers, or liquidation behavior are rejected.
         </span>
       </div>
       <div className="field oracle-managed">
