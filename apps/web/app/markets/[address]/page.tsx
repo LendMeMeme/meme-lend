@@ -72,13 +72,6 @@ export default async function MarketPage({ params }: Props) {
           <strong>{usdc(m.availableUsdc)}</strong>
         </div>
         <div className="stat">
-          <span>Borrowable now</span>
-          <strong>{m.maxBorrowableUsdc == null ? "Paused" : usdc(m.maxBorrowableUsdc)}</strong>
-          <small>
-            {m.maxBorrowableUsdc == null ? "Waiting for a fresh safe price" : "Across this market"}
-          </small>
-        </div>
-        <div className="stat">
           <span>USDC being used</span>
           <strong>
             {usdc(m.borrowedUsdc)} of {usdc(totalUsdc)}

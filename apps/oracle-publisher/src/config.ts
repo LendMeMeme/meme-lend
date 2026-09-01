@@ -51,6 +51,7 @@ export function publisherConfig() {
     ),
     maxJupiterPriceImpactBps: Number(process.env.ORACLE_MAX_JUPITER_PRICE_IMPACT_BPS ?? "500"),
     alertWebhookUrl: process.env.ALERT_WEBHOOK_URL?.trim() || null,
+    refreshSecret: process.env.ORACLE_REFRESH_SECRET?.trim() || null,
     standby: process.env.ORACLE_STANDBY === "true",
     failoverAfterSeconds: Number(process.env.ORACLE_FAILOVER_AFTER_SECONDS ?? "45"),
     minimumBalanceLamports: Number(process.env.ORACLE_MINIMUM_BALANCE_LAMPORTS ?? "20000000"),
@@ -107,6 +108,8 @@ export function assertConfig(config: PublisherConfig): void {
     throw new Error("ORACLE_FAILOVER_AFTER_SECONDS must be at least 15");
   if (!Number.isInteger(config.minimumBalanceLamports) || config.minimumBalanceLamports < 0)
     throw new Error("ORACLE_MINIMUM_BALANCE_LAMPORTS must be a non-negative integer");
+  if (config.refreshSecret !== null && config.refreshSecret.length < 32)
+    throw new Error("ORACLE_REFRESH_SECRET must contain at least 32 characters");
   for (const [label, value] of [
     ["ORACLE_SINGLE_VENUE_MAX_LLTV_BPS", config.singleVenueMaxLltvBps],
     ["ORACLE_SINGLE_VENUE_PRICE_HAIRCUT_BPS", config.singleVenuePriceHaircutBps],

@@ -48,6 +48,11 @@ export function TransactionPanel({
       return;
     }
     let cancelled = false;
+    void fetch("/api/oracle-refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ market: selectedMarket }),
+    }).catch(() => undefined);
     const refreshQuote = () => {
       void calculateBorrowCollateral({
         borrowAmount: amount,

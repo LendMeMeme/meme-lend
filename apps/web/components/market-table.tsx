@@ -67,7 +67,6 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
               <th>Lender APR</th>
               <th>Borrow APR</th>
               <th>Liquidity</th>
-              <th>Borrowable now</th>
               <th />
             </tr>
           </thead>
@@ -95,18 +94,6 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                     <strong>{money(market.availableUsdc)} available</strong>
                     <small>
                       {money(market.suppliedUsdc)} supplied · {tier}
-                    </small>
-                  </td>
-                  <td>
-                    <strong>
-                      {market.maxBorrowableUsdc == null
-                        ? "Paused"
-                        : money(market.maxBorrowableUsdc)}
-                    </strong>
-                    <small>
-                      {market.maxBorrowableUsdc == null
-                        ? "Price is not fresh"
-                        : "market-wide limit"}
                     </small>
                   </td>
                   <td>

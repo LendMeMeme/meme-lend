@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { createServer } from "node:http";
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { assertConfig, loadKeypair, publisherConfig } from "./config.js";
-import { publishAll } from "./publisher.js";
+import { publishAll, publishMarket } from "./publisher.js";
 
 const config = publisherConfig();
 assertConfig(config);
@@ -69,8 +69,35 @@ async function cycle(): Promise<void> {
   }
 }
 
-const server = createServer((request, response) => {
+const server = createServer(async (request, response) => {
   response.setHeader("content-type", "application/json; charset=utf-8");
+  if (request.url === "/refresh" && request.method === "POST") {
+    if (
+      !config.refreshSecret ||
+      request.headers["x-oracle-refresh-secret"] !== config.refreshSecret
+    ) {
+      response.statusCode = 401;
+      response.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { market?: unknown };
+      const market = new PublicKey(String(body.market ?? ""));
+      const info = await connection.getAccountInfo(market, "confirmed");
+      if (!info) throw new Error("Market account is unavailable");
+      const outcome = await publishMarket(connection, signer, config, market, info.data);
+      response.statusCode = 202;
+      response.end(JSON.stringify({ accepted: true, published: Boolean(outcome) }));
+    } catch (error) {
+      response.statusCode = 400;
+      response.end(
+        JSON.stringify({ error: error instanceof Error ? error.message : "Refresh failed" }),
+      );
+    }
+    return;
+  }
   if (request.url === "/health") {
     response.end(
       JSON.stringify({

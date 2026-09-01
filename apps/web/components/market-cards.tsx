@@ -29,12 +29,6 @@ export function MarketCards({ markets }: { markets: MarketView[] }) {
                 <dt>Available</dt>
                 <dd>{money(market.availableUsdc)}</dd>
               </div>
-              <div>
-                <dt>Borrowable now</dt>
-                <dd>
-                  {market.maxBorrowableUsdc == null ? "Paused" : money(market.maxBorrowableUsdc)}
-                </dd>
-              </div>
             </dl>
             <Link className="button" href={`/markets/${market.address}`}>
               View market
