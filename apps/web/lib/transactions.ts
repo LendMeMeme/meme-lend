@@ -129,6 +129,26 @@ const formatUnits = (value: bigint, decimals: number) => {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 };
 
+const minimum = (...values: bigint[]) =>
+  values.reduce((left, right) => (left < right ? left : right));
+
+export type BorrowLimitCode =
+  "AVAILABLE_LIQUIDITY" | "MARKET_CAP" | "WALLET_CAP" | "ORACLE_LIQUIDITY" | "NONE";
+
+export function limitingBorrowReason(input: {
+  maximum: bigint;
+  available: bigint;
+  marketRemaining: bigint;
+  walletRemaining: bigint;
+  oracleRemaining: bigint;
+}): BorrowLimitCode {
+  if (input.maximum === input.available) return "AVAILABLE_LIQUIDITY";
+  if (input.maximum === input.marketRemaining) return "MARKET_CAP";
+  if (input.maximum === input.walletRemaining) return "WALLET_CAP";
+  if (input.maximum === input.oracleRemaining) return "ORACLE_LIQUIDITY";
+  return "NONE";
+}
+
 export class ExistingMarketError extends Error {
   constructor(readonly market: PublicKey) {
     super(`A market with these exact immutable terms already exists: ${market.toBase58()}`);
@@ -579,24 +599,44 @@ export async function calculateBorrowCollateral(input: {
   if (!oracleInfo || !oracleInfo.owner.equals(programId))
     throw new Error("This market has no valid oracle configuration");
   if (!observationInfo || !observationInfo.owner.equals(programId))
-    throw new Error("Borrowing is not available yet because the oracle has not published a price");
+    throw new Error(
+      "No oracle price has been confirmed for this market yet. Automatic refresh is in progress.",
+    );
   if (!collateralMintInfo) throw new Error("Collateral mint is unavailable");
   if (!liquidityInfo || !liquidityInfo.owner.equals(loanProgram) || liquidityInfo.data.length < 72)
     throw new Error("Market USDC liquidity account is unavailable");
   const oracle = decodePinocchioOracleConfiguration(oracleInfo.data),
     observation = decodePinocchioOracleObservation(observationInfo.data),
     now = BigInt(Math.floor(Date.now() / 1000));
-  if (
-    observation.price === 0n ||
-    observation.publisher.equals(PublicKey.default) ||
-    !observation.market.equals(marketKey) ||
-    observation.confidenceBps > oracle.maxConfidenceBps ||
-    observation.deviationBps > oracle.maxDeviationBps ||
-    observation.maxRecoverableUsdc === 0n ||
-    observation.publishedAt > now ||
-    now - observation.publishedAt > BigInt(oracle.maxAgeSeconds)
-  )
-    throw new Error("Borrowing is paused because the oracle price is not fresh");
+  if (!observation.market.equals(marketKey))
+    throw new Error(
+      "The oracle observation belongs to a different market. Automatic refresh cannot use it.",
+    );
+  if (observation.publisher.equals(PublicKey.default))
+    throw new Error(
+      "The primary publisher submitted a price, but the backup publisher has not confirmed it yet. Automatic confirmation is in progress.",
+    );
+  if (observation.price === 0n)
+    throw new Error("The confirmed oracle price is zero and cannot safely support borrowing.");
+  if (observation.maxRecoverableUsdc === 0n)
+    throw new Error(
+      "The oracle currently finds no safely recoverable USDC liquidity for this collateral.",
+    );
+  if (observation.confidenceBps > oracle.maxConfidenceBps)
+    throw new Error(
+      `Oracle confidence is ${observation.confidenceBps / 100}%, above this market's ${oracle.maxConfidenceBps / 100}% limit.`,
+    );
+  if (observation.deviationBps > oracle.maxDeviationBps)
+    throw new Error(
+      `Price sources differ by ${observation.deviationBps / 100}%, above this market's ${oracle.maxDeviationBps / 100}% limit.`,
+    );
+  if (observation.publishedAt > now)
+    throw new Error("The oracle timestamp is in the future and cannot be accepted.");
+  const oracleAgeSeconds = now - observation.publishedAt;
+  if (oracleAgeSeconds > BigInt(oracle.maxAgeSeconds))
+    throw new Error(
+      `The oracle price expired ${oracleAgeSeconds - BigInt(oracle.maxAgeSeconds)} seconds ago. Automatic refresh is in progress.`,
+    );
   const position = positionInfo?.owner.equals(programId)
     ? decodePinocchioBorrowerPosition(positionInfo.data)
     : null;
@@ -619,16 +659,23 @@ export async function calculateBorrowCollateral(input: {
     (market.totalBorrowShares + newBorrowShares) * accrued.borrowIndex,
     RATE_SCALE,
   );
-  if (resultingDebt > market.walletBorrowCap)
-    throw new Error(
-      "This amount would exceed the wallet borrowing limit after including interest already accrued.",
-    );
-  if (resultingTotalDebt > market.marketBorrowCap)
-    throw new Error(
-      "This amount would exceed the market borrowing limit after including interest already accrued.",
-    );
-  if (resultingDebt > observation.maxRecoverableUsdc)
-    throw new Error("That amount exceeds the oracle's safe liquidity limit");
+  const existingDebt = divideUp((position?.borrowShares ?? 0n) * accrued.borrowIndex, RATE_SCALE);
+  const walletRemaining =
+    market.walletBorrowCap > existingDebt ? market.walletBorrowCap - existingDebt : 0n;
+  const marketRemaining =
+    market.marketBorrowCap > accrued.totalDebt ? market.marketBorrowCap - accrued.totalDebt : 0n;
+  const oracleRemaining =
+    observation.maxRecoverableUsdc > existingDebt
+      ? observation.maxRecoverableUsdc - existingDebt
+      : 0n;
+  const maximumBorrow = minimum(cash, walletRemaining, marketRemaining, oracleRemaining);
+  const limitingCode = limitingBorrowReason({
+    maximum: maximumBorrow,
+    available: cash,
+    marketRemaining,
+    walletRemaining,
+    oracleRemaining,
+  });
   const collateralDecimals = collateralMintInfo.data[44];
   if (collateralDecimals === undefined) throw new Error("Collateral mint data is invalid");
   const targetLtvBps = Math.max(1, Math.floor((market.lltvBps * 8_000) / 10_000)),
@@ -648,6 +695,20 @@ export async function calculateBorrowCollateral(input: {
   const missingCollateral =
     additionalCollateral > walletCollateral ? additionalCollateral - walletCollateral : 0n;
   return {
+    requestedUsdc: formatUnits(requestedDebt, loanDecimals),
+    maximumBorrowUsdc: formatUnits(maximumBorrow, loanDecimals),
+    availableUsdc: formatUnits(cash, loanDecimals),
+    remainingMarketCapUsdc: formatUnits(marketRemaining, loanDecimals),
+    remainingWalletCapUsdc: formatUnits(walletRemaining, loanDecimals),
+    oracleRecoverableUsdc: formatUnits(observation.maxRecoverableUsdc, loanDecimals),
+    remainingOracleUsdc: formatUnits(oracleRemaining, loanDecimals),
+    oracleAgeSeconds: Number(oracleAgeSeconds),
+    oracleMaxAgeSeconds: oracle.maxAgeSeconds,
+    requestedAmountAllowed:
+      requestedDebt <= maximumBorrow &&
+      resultingDebt <= market.walletBorrowCap &&
+      resultingTotalDebt <= market.marketBorrowCap,
+    limitingCode,
     collateralAmount: formatUnits(additionalCollateral, collateralDecimals),
     walletCollateralAmount: formatUnits(walletCollateral, collateralDecimals),
     missingCollateralAmount: formatUnits(missingCollateral, collateralDecimals),

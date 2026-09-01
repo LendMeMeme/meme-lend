@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { RATE_SCALE } from "@meme-lend/sdk";
-import { previewAccruedBorrowState, requiredCollateralDeposit } from "./transactions";
+import {
+  limitingBorrowReason,
+  previewAccruedBorrowState,
+  requiredCollateralDeposit,
+} from "./transactions";
 
 describe("automatic borrow collateral", () => {
   it("rounds collateral up and targets a safety level below liquidation", () => {
@@ -47,5 +51,27 @@ describe("automatic borrow collateral", () => {
     });
     expect(preview.borrowIndex).toBeGreaterThan(RATE_SCALE);
     expect(preview.totalDebt).toBeGreaterThan(1_000_000n);
+  });
+});
+
+describe("borrow limit explanations", () => {
+  const reason = (overrides: Partial<Parameters<typeof limitingBorrowReason>[0]>) =>
+    limitingBorrowReason({
+      maximum: 10n,
+      available: 20n,
+      marketRemaining: 30n,
+      walletRemaining: 40n,
+      oracleRemaining: 10n,
+      ...overrides,
+    });
+
+  it("identifies oracle recoverability as the limiting constraint", () => {
+    expect(reason({})).toBe("ORACLE_LIQUIDITY");
+  });
+
+  it("identifies market cash, market cap, and wallet cap constraints", () => {
+    expect(reason({ available: 10n, oracleRemaining: 50n })).toBe("AVAILABLE_LIQUIDITY");
+    expect(reason({ marketRemaining: 10n, oracleRemaining: 50n })).toBe("MARKET_CAP");
+    expect(reason({ walletRemaining: 10n, oracleRemaining: 50n })).toBe("WALLET_CAP");
   });
 });

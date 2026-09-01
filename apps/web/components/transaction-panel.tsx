@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import {
   buildBorrowWithCollateralTransaction,
@@ -10,6 +10,40 @@ import {
 } from "@/lib/transactions";
 import { confirmSignatureByPolling } from "@/lib/confirmation";
 type Action = MarketAction;
+type BorrowQuote = Awaited<ReturnType<typeof calculateBorrowCollateral>>;
+type OracleRefreshResult = {
+  accepted?: boolean;
+  published?: boolean;
+  errors?: string[];
+  error?: string;
+};
+
+async function refreshOracle(market: string): Promise<OracleRefreshResult> {
+  const response = await fetch("/api/oracle-refresh", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ market }),
+  });
+  const result = (await response.json().catch(() => ({}))) as OracleRefreshResult;
+  if (!response.ok && !result.errors?.length)
+    throw new Error(result.error || `Oracle refresh service returned HTTP ${response.status}`);
+  return result;
+}
+
+function borrowLimitMessage(quote: BorrowQuote): string {
+  switch (quote.limitingCode) {
+    case "AVAILABLE_LIQUIDITY":
+      return `This market currently has ${quote.availableUsdc} USDC available.`;
+    case "MARKET_CAP":
+      return `This market's remaining borrowing limit is ${quote.remainingMarketCapUsdc} USDC.`;
+    case "WALLET_CAP":
+      return `Your remaining wallet borrowing limit is ${quote.remainingWalletCapUsdc} USDC.`;
+    case "ORACLE_LIQUIDITY":
+      return `The oracle currently supports ${quote.remainingOracleUsdc} USDC of additional borrowing for this wallet.`;
+    default:
+      return "No borrowing constraint is currently limiting this amount.";
+  }
+}
 export function TransactionPanel({
   action,
   market,
@@ -29,6 +63,8 @@ export function TransactionPanel({
   const [amount, setAmount] = useState("");
   const [collateralAmount, setCollateralAmount] = useState("");
   const [collateralQuote, setCollateralQuote] = useState("");
+  const [borrowQuote, setBorrowQuote] = useState<BorrowQuote | null>(null);
+  const oracleRefreshError = useRef("");
   const [supplyBalance, setSupplyBalance] = useState("");
   const [marketInput, setMarketInput] = useState("");
   const [borrower, setBorrower] = useState("");
@@ -64,14 +100,21 @@ export function TransactionPanel({
     if (action !== "Borrow" || !publicKey || !selectedMarket || !valid) {
       setCollateralAmount("");
       setCollateralQuote("");
+      setBorrowQuote(null);
+      oracleRefreshError.current = "";
       return;
     }
     let cancelled = false;
-    void fetch("/api/oracle-refresh", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ market: selectedMarket }),
-    }).catch(() => undefined);
+    void refreshOracle(selectedMarket)
+      .then((result) => {
+        if (!cancelled) oracleRefreshError.current = result.errors?.join(" Backup: ") ?? "";
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          oracleRefreshError.current =
+            cause instanceof Error ? cause.message : "Oracle refresh service is unreachable";
+        }
+      });
     const refreshQuote = () => {
       void calculateBorrowCollateral({
         borrowAmount: amount,
@@ -82,17 +125,25 @@ export function TransactionPanel({
         .then((quote) => {
           if (!cancelled) {
             setCollateralAmount(quote.collateralAmount);
+            setBorrowQuote(quote);
             setCollateralQuote(
               quote.hasEnoughCollateral
                 ? `You need ${quote.collateralAmount} ${collateralSymbol ?? "memecoin"}. Your wallet has ${quote.walletCollateralAmount}.`
                 : `You need ${quote.collateralAmount} ${collateralSymbol ?? "memecoin"}, but your wallet has ${quote.walletCollateralAmount}. Get ${quote.missingCollateralAmount} more to borrow this amount.`,
             );
+            oracleRefreshError.current = "";
           }
         })
         .catch((cause) => {
           if (!cancelled) {
             setCollateralAmount("");
-            setCollateralQuote(cause instanceof Error ? cause.message : "Collateral unavailable");
+            setBorrowQuote(null);
+            const quoteError = cause instanceof Error ? cause.message : "Collateral unavailable";
+            setCollateralQuote(
+              oracleRefreshError.current
+                ? `${quoteError} Publisher detail: ${oracleRefreshError.current}`
+                : quoteError,
+            );
           }
         });
     };
@@ -109,6 +160,11 @@ export function TransactionPanel({
     setStatus("checking");
     setMessage("");
     try {
+      if (action === "Borrow") {
+        const refresh = await refreshOracle(selectedMarket);
+        if (!refresh.accepted && refresh.errors?.length)
+          throw new Error(`Oracle refresh failed: ${refresh.errors.join(" Backup: ")}`);
+      }
       const automaticCollateral =
         action === "Borrow"
           ? await calculateBorrowCollateral({
@@ -121,6 +177,10 @@ export function TransactionPanel({
       if (automaticCollateral && !automaticCollateral.hasEnoughCollateral)
         throw new Error(
           `You need ${automaticCollateral.collateralAmount} ${collateralSymbol ?? "memecoin"}, but your wallet has ${automaticCollateral.walletCollateralAmount}. Get ${automaticCollateral.missingCollateralAmount} more first.`,
+        );
+      if (automaticCollateral && !automaticCollateral.requestedAmountAllowed)
+        throw new Error(
+          `You requested ${automaticCollateral.requestedUsdc} USDC, but the current maximum is ${automaticCollateral.maximumBorrowUsdc} USDC. ${borrowLimitMessage(automaticCollateral)}`,
         );
       const transaction =
         action === "Borrow"
@@ -192,18 +252,49 @@ export function TransactionPanel({
         </span>
       </div>
       {action === "Borrow" ? (
-        <div className="field">
-          <span className="field-label">Collateral added automatically</span>
-          <strong className="calculated-value">
-            {collateralAmount
-              ? `${collateralAmount} ${collateralSymbol ?? "memecoin"}`
-              : "Enter a USDC amount above"}
-          </strong>
-          <span className="help">
-            {collateralQuote ||
-              "The app uses the fresh on-chain oracle price and adds a safety buffer automatically."}
-          </span>
-        </div>
+        <>
+          <div className="field">
+            <span className="field-label">Collateral added automatically</span>
+            <strong className="calculated-value">
+              {collateralAmount
+                ? `${collateralAmount} ${collateralSymbol ?? "memecoin"}`
+                : "Enter a USDC amount above"}
+            </strong>
+            <span className="help">
+              {collateralQuote ||
+                "The app uses the fresh on-chain oracle price and adds a safety buffer automatically."}
+            </span>
+          </div>
+          {borrowQuote ? (
+            <div className="estimate-box">
+              <strong>What you can borrow right now</strong>
+              <span>Maximum: {borrowQuote.maximumBorrowUsdc} USDC</span>
+              <small>{borrowLimitMessage(borrowQuote)}</small>
+              <small>
+                Market cash {borrowQuote.availableUsdc} · Market cap remaining{" "}
+                {borrowQuote.remainingMarketCapUsdc} · Wallet cap remaining{" "}
+                {borrowQuote.remainingWalletCapUsdc} · Oracle limit remaining{" "}
+                {borrowQuote.remainingOracleUsdc} USDC
+              </small>
+              <small>
+                Oracle updated {borrowQuote.oracleAgeSeconds}s ago and remains valid for{" "}
+                {borrowQuote.oracleMaxAgeSeconds}s.
+              </small>
+              {!borrowQuote.requestedAmountAllowed && Number(borrowQuote.maximumBorrowUsdc) > 0 ? (
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => {
+                    setAmount(borrowQuote.maximumBorrowUsdc);
+                    setStatus("idle");
+                  }}
+                >
+                  Use maximum
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : null}
       {action === "Supply" && publicKey ? (
         <div className="field">
@@ -212,8 +303,22 @@ export function TransactionPanel({
             {supplyBalance ? `${supplyBalance} USDC` : "Checking…"}
           </strong>
           <span className="help">
-            This is the most USDC you can supply from this wallet right now.
+            {valid && Number(amount) > Number(supplyBalance)
+              ? `You entered ${amount} USDC, but this wallet contains ${supplyBalance || "0"} USDC.`
+              : "This is the most USDC you can supply from this wallet right now."}
           </span>
+          {valid && Number(amount) > Number(supplyBalance) && Number(supplyBalance) > 0 ? (
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => {
+                setAmount(supplyBalance);
+                setStatus("idle");
+              }}
+            >
+              Supply maximum
+            </button>
+          ) : null}
         </div>
       ) : null}
       {aprBps != null && valid && (action === "Supply" || action === "Borrow") ? (
