@@ -35,10 +35,21 @@ export function publisherConfig() {
     minimumLiquidityUsd: Number(process.env.ORACLE_MINIMUM_LIQUIDITY_USD ?? "10000"),
     dexScreenerUrl: process.env.DEX_SCREENER_URL ?? "https://api.dexscreener.com",
     jupiterUrl: process.env.JUPITER_PRICE_URL ?? "https://api.jup.ag/price/v3",
+    jupiterQuoteUrl: process.env.JUPITER_QUOTE_URL ?? "https://api.jup.ag/swap/v1/quote",
     jupiterApiKey: process.env.JUPITER_API_KEY?.trim() || null,
     pythUrl: process.env.PYTH_HERMES_URL ?? "https://pyth.dourolabs.app/hermes",
     pythApiKey: process.env.PYTH_API_KEY?.trim() || null,
     pythFeedMap: parseFeedMap(process.env.PYTH_FEED_MAP_JSON),
+    enableSingleVenueMode: process.env.ORACLE_ENABLE_SINGLE_VENUE_MODE === "true",
+    singleVenueMaxLltvBps: Number(process.env.ORACLE_SINGLE_VENUE_MAX_LLTV_BPS ?? "5000"),
+    singleVenuePriceHaircutBps: Number(process.env.ORACLE_SINGLE_VENUE_PRICE_HAIRCUT_BPS ?? "1000"),
+    singleVenueLiquidityHaircutBps: Number(
+      process.env.ORACLE_SINGLE_VENUE_LIQUIDITY_HAIRCUT_BPS ?? "100",
+    ),
+    singleVenueMaxRecoverableUsdc: Number(
+      process.env.ORACLE_SINGLE_VENUE_MAX_RECOVERABLE_USDC ?? "500",
+    ),
+    maxJupiterPriceImpactBps: Number(process.env.ORACLE_MAX_JUPITER_PRICE_IMPACT_BPS ?? "500"),
     alertWebhookUrl: process.env.ALERT_WEBHOOK_URL?.trim() || null,
     standby: process.env.ORACLE_STANDBY === "true",
     failoverAfterSeconds: Number(process.env.ORACLE_FAILOVER_AFTER_SECONDS ?? "45"),
@@ -96,4 +107,14 @@ export function assertConfig(config: PublisherConfig): void {
     throw new Error("ORACLE_FAILOVER_AFTER_SECONDS must be at least 15");
   if (!Number.isInteger(config.minimumBalanceLamports) || config.minimumBalanceLamports < 0)
     throw new Error("ORACLE_MINIMUM_BALANCE_LAMPORTS must be a non-negative integer");
+  for (const [label, value] of [
+    ["ORACLE_SINGLE_VENUE_MAX_LLTV_BPS", config.singleVenueMaxLltvBps],
+    ["ORACLE_SINGLE_VENUE_PRICE_HAIRCUT_BPS", config.singleVenuePriceHaircutBps],
+    ["ORACLE_SINGLE_VENUE_LIQUIDITY_HAIRCUT_BPS", config.singleVenueLiquidityHaircutBps],
+    ["ORACLE_MAX_JUPITER_PRICE_IMPACT_BPS", config.maxJupiterPriceImpactBps],
+  ] as const)
+    if (!Number.isInteger(value) || value <= 0 || value > 10_000)
+      throw new Error(`${label} must be between 1 and 10000`);
+  if (config.singleVenueMaxRecoverableUsdc <= 0)
+    throw new Error("ORACLE_SINGLE_VENUE_MAX_RECOVERABLE_USDC must be positive");
 }

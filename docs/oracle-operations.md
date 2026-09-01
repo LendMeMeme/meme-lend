@@ -67,6 +67,20 @@ channel. An alert is sent on the first failed cycle and every fourth consecutive
 The service also fails readiness below `ORACLE_MINIMUM_BALANCE_LAMPORTS`; replenish publisher SOL
 before that threshold is reached.
 
+## Pre-bond Pump.fun collateral
+
+Pre-bond collateral is disabled by default because it depends on one bonding curve. Enable it only
+with `ORACLE_ENABLE_SINGLE_VENUE_MODE=true` on both independent publishers. The adapter derives and
+validates the official `[b"bonding-curve", mint]` PDA owned by Pump program
+`6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`, rejects completed and malformed curves, and never
+counts virtual reserves as recoverable liquidity.
+
+For 0.1%, 0.5%, and 1% of real token reserves, each publisher independently compares the official
+constant-product sell result with Jupiter token-to-USDC and SOL-to-USDC executable quotes. It uses
+the lower execution value, applies the single-venue price and liquidity haircuts, and caps total
+recoverable USDC. Markets above `ORACLE_SINGLE_VENUE_MAX_LLTV_BPS` fail closed. This mode materially
+increases manipulation and liquidation risk and does not make a Pump.fun token safe.
+
 ## Market admission
 
 An arbitrary mint is not automatically publishable. Before allowing liquidity:

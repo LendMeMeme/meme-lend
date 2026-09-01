@@ -1,4 +1,6 @@
 import type { PublisherConfig } from "./config.js";
+import type { Connection } from "@solana/web3.js";
+import { pumpBondingCurvePrice } from "./pump.js";
 
 export type PriceSample = {
   source: string;
@@ -12,6 +14,7 @@ export type PriceResult = {
   confidenceBps: number;
   deviationBps: number;
   liquidityUsd: number;
+  maxRecoverableUsdc?: number;
   sources: string[];
 };
 
@@ -131,13 +134,22 @@ export async function pythSample(mint: string, config: PublisherConfig): Promise
   return { source: "pyth", priceUsd, confidenceBps, publishedAt };
 }
 
-export async function aggregatePrice(mint: string, config: PublisherConfig): Promise<PriceResult> {
+export async function aggregatePrice(
+  connection: Connection,
+  mint: string,
+  config: PublisherConfig,
+  marketLltvBps: number,
+): Promise<PriceResult> {
   const [dex, jupiter, pyth] = await Promise.allSettled([
     dexScreenerSample(mint, config),
     jupiterSample(mint, config),
     pythSample(mint, config),
   ]);
-  if (dex.status !== "fulfilled") throw new Error(`Liquidity source failed: ${dex.reason}`);
+  if (dex.status !== "fulfilled") {
+    if (config.enableSingleVenueMode)
+      return pumpBondingCurvePrice(connection, mint, marketLltvBps, config);
+    throw new Error(`Liquidity source failed: ${dex.reason}`);
+  }
   const samples = [dex.value.sample];
   if (jupiter.status === "fulfilled") samples.push(jupiter.value);
   if (pyth.status === "fulfilled") samples.push(pyth.value);

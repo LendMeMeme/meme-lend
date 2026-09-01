@@ -97,7 +97,12 @@ export async function publishMarket(
       ? oracle.sources[1]
       : oracle.sources[0];
   if (!expectedPublisher?.equals(signer.publicKey)) return null;
-  const result = await aggregatePrice(market.collateralMint.toBase58(), config);
+  const result = await aggregatePrice(
+    connection,
+    market.collateralMint.toBase58(),
+    config,
+    market.lltvBps,
+  );
   if (result.confidenceBps > oracle.maxConfidenceBps)
     throw new Error(
       `Confidence ${result.confidenceBps} exceeds market limit ${oracle.maxConfidenceBps}`,
@@ -105,7 +110,7 @@ export async function publishMarket(
   const price = usdPriceToOracle(result.priceUsd, 6 + oracle.priceDecimals);
   const recoverableUsd = Math.min(
     config.maxRecoverableUsdc,
-    (result.liquidityUsd * config.liquidityHaircutBps) / 10_000,
+    result.maxRecoverableUsdc ?? (result.liquidityUsd * config.liquidityHaircutBps) / 10_000,
   );
   const maxRecoverableUsdc = BigInt(Math.floor(recoverableUsd * 1_000_000));
   if (price <= 0n || maxRecoverableUsdc <= 0n)
