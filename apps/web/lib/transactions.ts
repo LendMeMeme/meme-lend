@@ -8,6 +8,7 @@ import {
   associatedTokenAddress,
   associatedTokenAddressWithBump,
   createAssociatedTokenAccountIdempotentInstruction,
+  borrowAprAtUtilization,
   getMintDecimals,
   validateSupportedMintData,
   TOKEN_2022_PROGRAM_ID,
@@ -88,6 +89,37 @@ function parseUnits(value: string, decimals: number): bigint {
 
 const divideUp = (numerator: bigint, denominator: bigint) =>
   numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator;
+
+const SECONDS_PER_YEAR = 31_536_000n;
+const U64_MAX = (1n << 64n) - 1n;
+
+export function previewAccruedBorrowState(input: {
+  cash: bigint;
+  totalDebt: bigint;
+  totalBorrowShares: bigint;
+  borrowIndex: bigint;
+  lastAccrualTimestamp: bigint;
+  now: bigint;
+  rateCurve: ImmutableRateCurve;
+}) {
+  const elapsed = input.now - input.lastAccrualTimestamp;
+  if (elapsed <= 0n || input.totalDebt === 0n)
+    return { borrowIndex: input.borrowIndex, totalDebt: input.totalDebt };
+  if (input.totalBorrowShares === 0n) throw new Error("Market debt accounting is invalid");
+  const utilization = (input.totalDebt * RATE_SCALE) / (input.cash + input.totalDebt);
+  const rate = borrowAprAtUtilization(input.rateCurve, utilization);
+  const growth = divideUp(rate * elapsed, SECONDS_PER_YEAR);
+  const maxIndex = (U64_MAX * RATE_SCALE) / input.totalBorrowShares;
+  const room = maxIndex > input.borrowIndex ? maxIndex - input.borrowIndex : 0n;
+  const maxGrowth = (room * RATE_SCALE) / input.borrowIndex;
+  const boundedGrowth = growth < maxGrowth ? growth : maxGrowth;
+  const delta = divideUp(input.borrowIndex * boundedGrowth, RATE_SCALE);
+  const borrowIndex = input.borrowIndex + (delta < room ? delta : room);
+  return {
+    borrowIndex,
+    totalDebt: divideUp(input.totalBorrowShares * borrowIndex, RATE_SCALE),
+  };
+}
 
 const formatUnits = (value: bigint, decimals: number) => {
   const base = 10n ** BigInt(decimals),
@@ -497,9 +529,11 @@ export async function calculateBorrowCollateral(input: {
   const [oracleConfigKey] = pinocchioPdas.oracleConfig(marketKey, programId),
     [observationKey] = pinocchioPdas.oracleObservation(marketKey, programId),
     [positionKey] = pinocchioPdas.borrowerPosition(marketKey, input.owner, programId);
-  const [oracleInfo, observationInfo, positionInfo, collateralMintInfo] =
+  const [authority] = pinocchioPdas.marketAuthority(marketKey, programId);
+  const liquidityKey = associatedTokenAddress(market.loanMint, authority, loanProgram);
+  const [oracleInfo, observationInfo, positionInfo, collateralMintInfo, liquidityInfo] =
     await input.connection.getMultipleAccountsInfo(
-      [oracleConfigKey, observationKey, positionKey, market.collateralMint],
+      [oracleConfigKey, observationKey, positionKey, market.collateralMint, liquidityKey],
       "confirmed",
     );
   if (!oracleInfo || !oracleInfo.owner.equals(programId))
@@ -507,6 +541,8 @@ export async function calculateBorrowCollateral(input: {
   if (!observationInfo || !observationInfo.owner.equals(programId))
     throw new Error("Borrowing is not available yet because the oracle has not published a price");
   if (!collateralMintInfo) throw new Error("Collateral mint is unavailable");
+  if (!liquidityInfo || !liquidityInfo.owner.equals(loanProgram) || liquidityInfo.data.length < 72)
+    throw new Error("Market USDC liquidity account is unavailable");
   const oracle = decodePinocchioOracleConfiguration(oracleInfo.data),
     observation = decodePinocchioOracleObservation(observationInfo.data),
     now = BigInt(Math.floor(Date.now() / 1000));
@@ -524,13 +560,33 @@ export async function calculateBorrowCollateral(input: {
   const position = positionInfo?.owner.equals(programId)
     ? decodePinocchioBorrowerPosition(positionInfo.data)
     : null;
-  const existingDebt = divideUp(
-    (position?.borrowShares ?? 0n) * market.borrowIndex,
-    1_000_000_000_000_000_000n,
+  const cash = liquidityInfo.data.readBigUInt64LE(64);
+  const accrued = previewAccruedBorrowState({
+    cash,
+    totalDebt: market.totalDebt,
+    totalBorrowShares: market.totalBorrowShares,
+    borrowIndex: market.borrowIndex,
+    lastAccrualTimestamp: market.lastAccrualTimestamp,
+    now,
+    rateCurve: market.rateCurve,
+  });
+  const newBorrowShares = divideUp(requestedDebt * RATE_SCALE, accrued.borrowIndex);
+  const resultingDebt = divideUp(
+    ((position?.borrowShares ?? 0n) + newBorrowShares) * accrued.borrowIndex,
+    RATE_SCALE,
   );
-  const resultingDebt = existingDebt + requestedDebt;
-  if (resultingDebt > market.walletBorrowCap || resultingDebt > market.marketBorrowCap)
-    throw new Error("That amount exceeds this market's permanent borrowing cap");
+  const resultingTotalDebt = divideUp(
+    (market.totalBorrowShares + newBorrowShares) * accrued.borrowIndex,
+    RATE_SCALE,
+  );
+  if (resultingDebt > market.walletBorrowCap)
+    throw new Error(
+      "This amount would exceed the wallet borrowing limit after including interest already accrued.",
+    );
+  if (resultingTotalDebt > market.marketBorrowCap)
+    throw new Error(
+      "This amount would exceed the market borrowing limit after including interest already accrued.",
+    );
   if (resultingDebt > observation.maxRecoverableUsdc)
     throw new Error("That amount exceeds the oracle's safe liquidity limit");
   const collateralDecimals = collateralMintInfo.data[44];
