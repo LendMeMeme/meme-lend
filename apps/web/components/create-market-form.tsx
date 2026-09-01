@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Connection } from "@solana/web3.js";
-import { buildCreateMarketTransaction, RATE_MODELS } from "@/lib/transactions";
+import { buildCreateMarketTransaction, ExistingMarketError, RATE_MODELS } from "@/lib/transactions";
 import { confirmSignatureByPolling } from "@/lib/confirmation";
 import {
   borrowAprAtUtilization,
@@ -190,6 +190,12 @@ export function CreateMarketForm({ initialStrategy }: { initialStrategy?: string
       setStatus("confirmed");
       router.push(`/markets/${result.market.toBase58()}`);
     } catch (error) {
+      if (error instanceof ExistingMarketError) {
+        setMessage("This exact market already exists. Opening it now.");
+        setStatus("confirmed");
+        router.push(`/markets/${error.market.toBase58()}`);
+        return;
+      }
       const detail = await errorMessage(error, connection);
       setMessage(
         createdMarket

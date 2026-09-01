@@ -129,6 +129,13 @@ const formatUnits = (value: bigint, decimals: number) => {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 };
 
+export class ExistingMarketError extends Error {
+  constructor(readonly market: PublicKey) {
+    super(`A market with these exact immutable terms already exists: ${market.toBase58()}`);
+    this.name = "ExistingMarketError";
+  }
+}
+
 export function requiredCollateralDeposit(input: {
   resultingDebt: bigint;
   existingCollateral: bigint;
@@ -231,6 +238,8 @@ export async function buildCreateMarketTransaction(input: {
     bumps: [0, 0, 0, 0, 0, 0, 0],
   });
   const [market, mb] = pinocchioPdas.market(initial.configHash, programId);
+  const existingMarket = await input.connection.getAccountInfo(market, "confirmed");
+  if (existingMarket) throw new ExistingMarketError(market);
   const [authority, ab] = pinocchioPdas.marketAuthority(market, programId);
   const [oracle, ob] = pinocchioPdas.oracleConfig(market, programId);
   const [reserve, rb] = pinocchioPdas.reserve(market, programId);
