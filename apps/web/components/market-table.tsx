@@ -22,8 +22,8 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
             <th>Earn by lending</th>
             <th>Cost to borrow</th>
             <th>Liquidity</th>
-            <th>Risk</th>
-            <th>Top risks</th>
+            <th>Liquidation limit</th>
+            <th>Things to know</th>
             <th></th>
           </tr>
         </thead>
@@ -55,10 +55,8 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                 </small>
               </td>
               <td>
-                <span className={`badge ${m.status === "Unverified" ? "risk" : ""}`}>
-                  {m.status}
-                </span>
-                <small>Liquidation at {m.lltvBps / 100}%</small>
+                <strong>{m.lltvBps / 100}% LLTV</strong>
+                <small>Borrowers may be liquidated above this level</small>
               </td>
               <td>
                 <div className="tag-list compact">

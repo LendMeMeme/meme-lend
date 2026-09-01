@@ -33,7 +33,7 @@ export default async function MarketPage({ params }: Props) {
   return (
     <main className="shell">
       <header className="page-head">
-        <div className="eyebrow">{m.status} market</div>
+        <div className="eyebrow">Market overview</div>
         <h1>{tokenLabel} / USDC</h1>
         {m.collateralName ? <p className="muted">{m.collateralName}</p> : null}
         {m.extremeRateRisk ? (

@@ -566,6 +566,23 @@ td small {
   color: var(--green);
   text-decoration: underline;
 }
+.loan-safety-card {
+  padding: 18px;
+  border: 1px solid var(--risk-border);
+  border-radius: 14px;
+  background: var(--yellow-soft);
+}
+.loan-safety-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--risk-text);
+}
+.loan-safety-card p {
+  color: var(--risk-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
 tbody tr:last-child td {
   border-bottom: 0;
 }

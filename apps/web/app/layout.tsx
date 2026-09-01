@@ -22,7 +22,6 @@ const links = [
   ["Markets", "/markets"],
   ["My dashboard", "/positions"],
   ["Create a market", "/create-market"],
-  ["Liquidations", "/liquidations"],
   ["Docs", "/docs"],
 ];
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

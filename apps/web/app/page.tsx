@@ -7,10 +7,10 @@ export default function HomePage() {
       <section className="hero">
         <div className="hero-copy">
           <div className="eyebrow">Lend Meme Loans</div>
-          <h1>Make your USDC useful.</h1>
+          <h1>Liquidity, without shared risk.</h1>
           <p className="lede">
-            Earn interest by lending USDC, or use your memecoin to borrow USDC without selling it.
-            Every market shows its costs and risks before you act.
+            Lend USDC or borrow against memecoins through fully isolated markets with transparent,
+            immutable risk terms.
           </p>
           <div className="actions">
             <Link className="button primary" href="/markets">

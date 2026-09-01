@@ -21,6 +21,8 @@ interface PositionRow {
   borrowed: string;
   hasSupply: boolean;
   hasLoan: boolean;
+  lltvBps: number;
+  tags: MarketView["tags"];
 }
 
 const formatUnits = (value: bigint, decimals: number) => {
@@ -111,6 +113,8 @@ export function PositionsClient({
               borrowed: `${formatUnits(borrowed, 6)} USDC`,
               hasSupply: supplyShares > 0n,
               hasLoan: borrowShares > 0n || (borrower?.collateralAmount ?? 0n) > 0n,
+              lltvBps: market.lltvBps,
+              tags: market.tags,
             },
           ];
         });
@@ -191,6 +195,23 @@ export function PositionsClient({
                   <div>
                     <span>You lent</span>
                     <strong>{row.supplied}</strong>
+                  </div>
+                </div>
+                <div className="loan-safety-card">
+                  <div>
+                    <span>Liquidation limit</span>
+                    <strong>{row.lltvBps / 100}% LLTV</strong>
+                  </div>
+                  <p>
+                    Your collateral may be sold if your debt rises above this market’s limit. Repay
+                    or add collateral before that happens.
+                  </p>
+                  <div className="tag-list compact">
+                    {(row.tags ?? []).slice(0, 3).map((tag) => (
+                      <span className={`badge tag-${tag.tone}`} title={tag.detail} key={tag.code}>
+                        {tag.label}
+                      </span>
+                    ))}
                   </div>
                 </div>
                 <a className="button secondary" href={`/markets/${row.market}`}>
