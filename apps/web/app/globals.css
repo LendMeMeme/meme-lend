@@ -37,38 +37,38 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ink: #f1f5f2;
-  --ink-soft: #b1bcb5;
-  --paper: #030504;
-  --surface: #090c0a;
-  --surface-translucent: rgba(8, 11, 9, 0.94);
-  --surface-soft: #0e120f;
-  --field: #070a08;
-  --line: #1a211c;
-  --line-strong: #2b352e;
-  --muted: #a3ada6;
-  --green: #82d0a2;
-  --green-strong: #a0e1b9;
-  --green-soft: #10271b;
-  --yellow: #e6bd71;
-  --yellow-soft: #302719;
-  --coral: #ef8e80;
-  --focus: rgba(130, 208, 162, 0.24);
-  --nav-hover: rgba(255, 255, 255, 0.045);
-  --button: #0b0f0c;
-  --button-hover: #3f4b43;
-  --primary-button: #235f42;
-  --primary-button-hover: #2b704e;
-  --primary-button-text: #f5fff8;
+  --ink: #f2f4f2;
+  --ink-soft: #c0c7c2;
+  --paper: #070908;
+  --surface: #0d100e;
+  --surface-translucent: rgba(13, 16, 14, 0.94);
+  --surface-soft: #131714;
+  --field: #0a0d0b;
+  --line: #222824;
+  --line-strong: #343d36;
+  --muted: #9fa9a2;
+  --green: #78c596;
+  --green-strong: #92d4aa;
+  --green-soft: #13251a;
+  --yellow: #dfba73;
+  --yellow-soft: #292318;
+  --coral: #f09386;
+  --focus: rgba(120, 197, 150, 0.28);
+  --nav-hover: rgba(255, 255, 255, 0.055);
+  --button: #121613;
+  --button-hover: #465149;
+  --primary-button: #286447;
+  --primary-button-hover: #307554;
+  --primary-button-text: #f7fff9;
   --brand-ink: #0d1a12;
-  --risk-border: #57482d;
-  --risk-text: #e6c98f;
+  --risk-border: #51452f;
+  --risk-text: #dfc58f;
   --risk-strong: #f0d7a5;
-  --badge-border: #315b42;
-  --placeholder: #89948d;
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
-  --page-glow: rgba(35, 94, 59, 0.1);
-  --page-top: #050806;
+  --badge-border: #315940;
+  --placeholder: #7f8a83;
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.025);
+  --page-glow: rgba(48, 117, 84, 0.09);
+  --page-top: #0a0d0b;
 }
 * {
   box-sizing: border-box;
@@ -102,6 +102,12 @@ body {
     "Segoe UI",
     sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+:root[data-theme="dark"] body {
+  background-size:
+    auto,
+    96px 96px,
+    auto;
 }
 a {
   color: inherit;
@@ -406,6 +412,19 @@ h1 {
   border-radius: 20px;
   background: var(--surface-translucent);
   box-shadow: var(--shadow);
+}
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .market-workspace {
+  border-color: color-mix(in srgb, var(--line-strong) 72%, transparent);
+}
+:root[data-theme="dark"] .site-header {
+  background: rgba(7, 9, 8, 0.88);
+}
+:root[data-theme="dark"] tbody tr:hover {
+  background: color-mix(in srgb, var(--surface-soft) 82%, var(--green-soft) 18%);
+}
+:root[data-theme="dark"] .badge.tag-critical {
+  color: #ff9b91;
 }
 .empty {
   padding: 58px 28px;
