@@ -48,7 +48,7 @@ export function TransactionPanel({
       return;
     }
     let cancelled = false;
-    const timer = window.setTimeout(() => {
+    const refreshQuote = () => {
       void calculateBorrowCollateral({
         borrowAmount: amount,
         market: selectedMarket,
@@ -69,10 +69,13 @@ export function TransactionPanel({
             setCollateralQuote(cause instanceof Error ? cause.message : "Collateral unavailable");
           }
         });
-    }, 250);
+    };
+    const timer = window.setTimeout(refreshQuote, 250);
+    const interval = window.setInterval(refreshQuote, 5_000);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.clearInterval(interval);
     };
   }, [action, amount, connection, publicKey, selectedMarket, valid]);
   const submit = async () => {
