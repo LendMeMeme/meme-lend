@@ -2,6 +2,7 @@ import {
   decodePinocchioGlobalConfig,
   decodePinocchioMarket,
   decodePinocchioBorrowerPosition,
+  decodePinocchioLenderPosition,
   decodePinocchioOracleConfiguration,
   decodePinocchioOracleObservation,
   encodeCreatePinocchioMarket,
@@ -119,6 +120,85 @@ export function previewAccruedBorrowState(input: {
   return {
     borrowIndex,
     totalDebt: divideUp(input.totalBorrowShares * borrowIndex, RATE_SCALE),
+  };
+}
+
+export function withdrawSharesForAssets(input: {
+  assets: bigint;
+  totalAssets: bigint;
+  totalShares: bigint;
+}): bigint {
+  if (input.assets <= 0n || input.totalShares <= 0n) throw new Error("Nothing to withdraw");
+  return divideUp(input.assets * (input.totalShares + 1_000_000n), input.totalAssets + 1_000_000n);
+}
+
+export async function calculateWithdrawQuote(input: {
+  amount?: string;
+  market: string;
+  owner: PublicKey;
+  connection: Connection;
+}) {
+  const programId = id();
+  const marketKey = new PublicKey(input.market);
+  const market = decodePinocchioMarket(await data(input.connection, marketKey));
+  const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const decimals = await getMintDecimals(input.connection, market.loanMint, loanProgram);
+  const [authority] = pinocchioPdas.marketAuthority(marketKey, programId);
+  const liquidity = associatedTokenAddress(market.loanMint, authority, loanProgram);
+  const [lender] = pinocchioPdas.lenderPosition(marketKey, input.owner, programId);
+  const [lenderInfo, liquidityInfo] = await input.connection.getMultipleAccountsInfo(
+    [lender, liquidity],
+    "confirmed",
+  );
+  if (!lenderInfo?.owner.equals(programId)) throw new Error("You have no supply in this market");
+  if (!liquidityInfo?.owner.equals(loanProgram) || liquidityInfo.data.length < 72)
+    throw new Error("Market USDC liquidity is unavailable");
+  const position = decodePinocchioLenderPosition(lenderInfo.data);
+  const cash = liquidityInfo.data.readBigUInt64LE(64);
+  const accrued = previewAccruedBorrowState({
+    cash,
+    totalDebt: market.totalDebt,
+    totalBorrowShares: market.totalBorrowShares,
+    borrowIndex: market.borrowIndex,
+    lastAccrualTimestamp: market.lastAccrualTimestamp,
+    now: BigInt(Math.floor(Date.now() / 1000)),
+    rateCurve: market.rateCurve,
+  });
+  const interest = accrued.totalDebt - market.totalDebt;
+  const newFees = (interest * BigInt(market.creatorFeeBps + market.protocolFeeBps)) / 10_000n;
+  const grossAssets = cash + accrued.totalDebt;
+  const fees = market.creatorFeesClaimable + market.protocolFeesClaimable + newFees;
+  const totalAssets = grossAssets > fees ? grossAssets - fees : 0n;
+  const numerator = totalAssets + 1_000_000n;
+  const denominator = market.totalSupplyShares + 1_000_000n;
+  const cashLimitedShares = (cash * denominator) / numerator;
+  const maximumShares = minimum(position.supplyShares, cashLimitedShares);
+  const maximumAssets = (maximumShares * numerator) / denominator;
+  if (!input.amount)
+    return {
+      shares: maximumShares,
+      proceedsUsdc: formatUnits(maximumAssets, decimals),
+      maximumUsdc: formatUnits(maximumAssets, decimals),
+      totalClaimUsdc: formatUnits((position.supplyShares * numerator) / denominator, decimals),
+    };
+  const requestedAssets = input.amount ? parseUnits(input.amount, decimals) : maximumAssets;
+  const shares = withdrawSharesForAssets({
+    assets: requestedAssets,
+    totalAssets,
+    totalShares: market.totalSupplyShares,
+  });
+  if (shares > position.supplyShares)
+    throw new Error(`You can withdraw at most ${formatUnits(maximumAssets, decimals)} USDC`);
+  const proceeds = (shares * numerator) / denominator;
+  if (proceeds > cash)
+    throw new Error(
+      `Only ${formatUnits(maximumAssets, decimals)} USDC is currently available to withdraw`,
+    );
+  return {
+    shares,
+    proceedsUsdc: formatUnits(proceeds, decimals),
+    maximumUsdc: formatUnits(maximumAssets, decimals),
+    totalClaimUsdc: formatUnits((position.supplyShares * numerator) / denominator, decimals),
   };
 }
 
@@ -399,8 +479,7 @@ export async function buildMarketTransaction(input: {
     [rewards] = pinocchioPdas.rewards(marketKey, programId);
   const mint = input.action === "Deposit collateral" ? market.collateralMint : market.loanMint;
   const tokenProgram = input.action === "Deposit collateral" ? collateralProgram : loanProgram;
-  const decimals =
-    input.action === "Withdraw" ? 0 : await getMintDecimals(input.connection, mint, tokenProgram);
+  const decimals = await getMintDecimals(input.connection, mint, tokenProgram);
   const amount = parseUnits(input.amount, decimals),
     tx = new Transaction();
   if (input.action === "Supply") {
@@ -426,6 +505,7 @@ export async function buildMarketTransaction(input: {
     );
   }
   if (input.action === "Withdraw") {
+    const quote = await calculateWithdrawQuote(input);
     const keys = [
       m(input.owner, false, true),
       m(marketKey, true),
@@ -438,7 +518,12 @@ export async function buildMarketTransaction(input: {
     ];
     if (market.rewardsEnabled) keys.push(m(rewards));
     return tx.add(
-      pinocchioInstruction(PINOCCHIO_TAG.withdrawUsdc, keys, pinocchioShares(amount), programId),
+      pinocchioInstruction(
+        PINOCCHIO_TAG.withdrawUsdc,
+        keys,
+        pinocchioShares(quote.shares),
+        programId,
+      ),
     );
   }
   if (input.action === "Deposit collateral")

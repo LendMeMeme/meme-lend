@@ -4,7 +4,21 @@ import {
   limitingBorrowReason,
   previewAccruedBorrowState,
   requiredCollateralDeposit,
+  withdrawSharesForAssets,
 } from "./transactions";
+
+describe("USDC withdrawal conversion", () => {
+  it("converts a normal USDC amount to shares with conservative rounding", () => {
+    const assets = 100_000_000n;
+    const totalAssets = 200_000_000n;
+    const totalShares = 100_000_000n;
+    const shares = withdrawSharesForAssets({ assets, totalAssets, totalShares });
+    const numerator = totalAssets + 1_000_000n;
+    const denominator = totalShares + 1_000_000n;
+    expect((shares * numerator) / denominator).toBeGreaterThanOrEqual(assets);
+    expect(((shares - 1n) * numerator) / denominator).toBeLessThan(assets);
+  });
+});
 
 describe("automatic borrow collateral", () => {
   it("rounds collateral up and targets a safety level below liquidation", () => {

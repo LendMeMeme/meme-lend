@@ -4,6 +4,7 @@ import { useConnection, useWallet } from "@/components/wallet-context";
 import {
   buildBorrowWithCollateralTransaction,
   calculateBorrowCollateral,
+  calculateWithdrawQuote,
   buildMarketTransaction,
   getSupplyWalletBalance,
   type MarketAction,
@@ -11,6 +12,7 @@ import {
 import { confirmSignatureByPolling } from "@/lib/confirmation";
 type Action = MarketAction;
 type BorrowQuote = Awaited<ReturnType<typeof calculateBorrowCollateral>>;
+type WithdrawQuote = Awaited<ReturnType<typeof calculateWithdrawQuote>>;
 type OracleRefreshResult = {
   accepted?: boolean;
   published?: boolean;
@@ -66,6 +68,7 @@ export function TransactionPanel({
   const [borrowQuote, setBorrowQuote] = useState<BorrowQuote | null>(null);
   const oracleRefreshError = useRef("");
   const [supplyBalance, setSupplyBalance] = useState("");
+  const [withdrawQuote, setWithdrawQuote] = useState<WithdrawQuote | null>(null);
   const [marketInput, setMarketInput] = useState("");
   const [borrower, setBorrower] = useState("");
   const [status, setStatus] = useState<
@@ -74,10 +77,7 @@ export function TransactionPanel({
   const [message, setMessage] = useState("");
   const [signature, setSignature] = useState("");
   const fieldSuffix = action.toLowerCase().replaceAll(" ", "-");
-  const valid =
-    Number.isFinite(Number(amount)) &&
-    Number(amount) > 0 &&
-    (action !== "Withdraw" || /^\d+$/.test(amount));
+  const valid = Number.isFinite(Number(amount)) && Number(amount) > 0;
   const selectedMarket = market ?? marketInput;
   useEffect(() => {
     if (action !== "Supply" || !publicKey || !selectedMarket) {
@@ -91,6 +91,23 @@ export function TransactionPanel({
       })
       .catch(() => {
         if (!cancelled) setSupplyBalance("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [action, connection, publicKey, selectedMarket]);
+  useEffect(() => {
+    if (action !== "Withdraw" || !publicKey || !selectedMarket) {
+      setWithdrawQuote(null);
+      return;
+    }
+    let cancelled = false;
+    void calculateWithdrawQuote({ market: selectedMarket, owner: publicKey, connection })
+      .then((quote) => {
+        if (!cancelled) setWithdrawQuote(quote);
+      })
+      .catch(() => {
+        if (!cancelled) setWithdrawQuote(null);
       });
     return () => {
       cancelled = true;
@@ -230,27 +247,51 @@ export function TransactionPanel({
       <div className="field">
         <label htmlFor={`amount-${fieldSuffix}`}>
           {action === "Withdraw"
-            ? "Supply shares to burn"
+            ? "USDC to withdraw"
             : action === "Borrow"
               ? "USDC you want to borrow"
               : "Amount"}
         </label>
         <input
           id={`amount-${fieldSuffix}`}
-          inputMode={action === "Withdraw" ? "numeric" : "decimal"}
+          inputMode="decimal"
           value={amount}
           onChange={(e) => {
             setAmount(e.target.value);
             setStatus("idle");
           }}
-          placeholder={action === "Withdraw" ? "0" : "0.00"}
+          placeholder="0.00"
         />
         <span className="help">
           {action === "Withdraw"
-            ? "Enter an integer share amount. The token proceeds and account constraints are checked by a fresh simulation before signing."
+            ? "Enter a normal USDC amount. The app converts it to lender shares automatically using current on-chain accounting."
             : "Fees and resulting health are calculated from a fresh simulation before signing."}
         </span>
       </div>
+      {action === "Withdraw" && publicKey ? (
+        <div className="estimate-box">
+          <strong>Your withdrawal</strong>
+          <span>
+            Available now: {withdrawQuote ? `${withdrawQuote.maximumUsdc} USDC` : "Checking…"}
+          </span>
+          {withdrawQuote ? (
+            <>
+              <small>Total lender claim: {withdrawQuote.totalClaimUsdc} USDC</small>
+              <button
+                type="button"
+                className="button secondary"
+                disabled={Number(withdrawQuote.maximumUsdc) <= 0}
+                onClick={() => {
+                  setAmount(withdrawQuote.maximumUsdc);
+                  setStatus("idle");
+                }}
+              >
+                Withdraw maximum
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {action === "Borrow" ? (
         <>
           <div className="field">
