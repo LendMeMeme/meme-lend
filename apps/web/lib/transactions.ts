@@ -545,6 +545,7 @@ export async function calculateBorrowCollateral(input: {
   if (!marketInfo || !marketInfo.owner.equals(programId)) throw new Error("Market is unavailable");
   const market = decodePinocchioMarket(marketInfo.data);
   const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const collateralProgram = market.collateralToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
   const loanDecimals = await getMintDecimals(input.connection, market.loanMint, loanProgram);
   const requestedDebt = parseUnits(input.borrowAmount, loanDecimals);
   const [oracleConfigKey] = pinocchioPdas.oracleConfig(marketKey, programId),
@@ -552,11 +553,29 @@ export async function calculateBorrowCollateral(input: {
     [positionKey] = pinocchioPdas.borrowerPosition(marketKey, input.owner, programId);
   const [authority] = pinocchioPdas.marketAuthority(marketKey, programId);
   const liquidityKey = associatedTokenAddress(market.loanMint, authority, loanProgram);
-  const [oracleInfo, observationInfo, positionInfo, collateralMintInfo, liquidityInfo] =
-    await input.connection.getMultipleAccountsInfo(
-      [oracleConfigKey, observationKey, positionKey, market.collateralMint, liquidityKey],
-      "confirmed",
-    );
+  const ownerCollateralKey = associatedTokenAddress(
+    market.collateralMint,
+    input.owner,
+    collateralProgram,
+  );
+  const [
+    oracleInfo,
+    observationInfo,
+    positionInfo,
+    collateralMintInfo,
+    liquidityInfo,
+    ownerCollateralInfo,
+  ] = await input.connection.getMultipleAccountsInfo(
+    [
+      oracleConfigKey,
+      observationKey,
+      positionKey,
+      market.collateralMint,
+      liquidityKey,
+      ownerCollateralKey,
+    ],
+    "confirmed",
+  );
   if (!oracleInfo || !oracleInfo.owner.equals(programId))
     throw new Error("This market has no valid oracle configuration");
   if (!observationInfo || !observationInfo.owner.equals(programId))
@@ -622,9 +641,39 @@ export async function calculateBorrowCollateral(input: {
       priceDecimals: oracle.priceDecimals,
       targetLtvBps,
     });
+  const walletCollateral =
+    ownerCollateralInfo?.owner.equals(collateralProgram) && ownerCollateralInfo.data.length >= 72
+      ? ownerCollateralInfo.data.readBigUInt64LE(64)
+      : 0n;
+  const missingCollateral =
+    additionalCollateral > walletCollateral ? additionalCollateral - walletCollateral : 0n;
   return {
     collateralAmount: formatUnits(additionalCollateral, collateralDecimals),
+    walletCollateralAmount: formatUnits(walletCollateral, collateralDecimals),
+    missingCollateralAmount: formatUnits(missingCollateral, collateralDecimals),
+    hasEnoughCollateral: missingCollateral === 0n,
     collateralDecimals,
     targetLtvBps,
   };
+}
+
+export async function getSupplyWalletBalance(input: {
+  market: string;
+  owner: PublicKey;
+  connection: Connection;
+}): Promise<string> {
+  const programId = id();
+  const marketKey = new PublicKey(input.market);
+  const marketInfo = await input.connection.getAccountInfo(marketKey, "confirmed");
+  if (!marketInfo || !marketInfo.owner.equals(programId)) throw new Error("Market is unavailable");
+  const market = decodePinocchioMarket(marketInfo.data);
+  const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const decimals = await getMintDecimals(input.connection, market.loanMint, loanProgram);
+  const ownerLoan = associatedTokenAddress(market.loanMint, input.owner, loanProgram);
+  const account = await input.connection.getAccountInfo(ownerLoan, "confirmed");
+  const balance =
+    account?.owner.equals(loanProgram) && account.data.length >= 72
+      ? account.data.readBigUInt64LE(64)
+      : 0n;
+  return formatUnits(balance, decimals);
 }

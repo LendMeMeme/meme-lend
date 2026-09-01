@@ -5,6 +5,7 @@ import {
   buildBorrowWithCollateralTransaction,
   calculateBorrowCollateral,
   buildMarketTransaction,
+  getSupplyWalletBalance,
   type MarketAction,
 } from "@/lib/transactions";
 import { confirmSignatureByPolling } from "@/lib/confirmation";
@@ -28,6 +29,7 @@ export function TransactionPanel({
   const [amount, setAmount] = useState("");
   const [collateralAmount, setCollateralAmount] = useState("");
   const [collateralQuote, setCollateralQuote] = useState("");
+  const [supplyBalance, setSupplyBalance] = useState("");
   const [marketInput, setMarketInput] = useState("");
   const [borrower, setBorrower] = useState("");
   const [status, setStatus] = useState<
@@ -41,6 +43,23 @@ export function TransactionPanel({
     Number(amount) > 0 &&
     (action !== "Withdraw" || /^\d+$/.test(amount));
   const selectedMarket = market ?? marketInput;
+  useEffect(() => {
+    if (action !== "Supply" || !publicKey || !selectedMarket) {
+      setSupplyBalance("");
+      return;
+    }
+    let cancelled = false;
+    void getSupplyWalletBalance({ market: selectedMarket, owner: publicKey, connection })
+      .then((balance) => {
+        if (!cancelled) setSupplyBalance(balance);
+      })
+      .catch(() => {
+        if (!cancelled) setSupplyBalance("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [action, connection, publicKey, selectedMarket]);
   useEffect(() => {
     if (action !== "Borrow" || !publicKey || !selectedMarket || !valid) {
       setCollateralAmount("");
@@ -64,7 +83,9 @@ export function TransactionPanel({
           if (!cancelled) {
             setCollateralAmount(quote.collateralAmount);
             setCollateralQuote(
-              `Calculated from the live oracle with a safety target below the ${quote.targetLtvBps / 100}% loan-to-value level.`,
+              quote.hasEnoughCollateral
+                ? `You need ${quote.collateralAmount} ${collateralSymbol ?? "memecoin"}. Your wallet has ${quote.walletCollateralAmount}.`
+                : `You need ${quote.collateralAmount} ${collateralSymbol ?? "memecoin"}, but your wallet has ${quote.walletCollateralAmount}. Get ${quote.missingCollateralAmount} more to borrow this amount.`,
             );
           }
         })
@@ -97,6 +118,10 @@ export function TransactionPanel({
               connection,
             })
           : null;
+      if (automaticCollateral && !automaticCollateral.hasEnoughCollateral)
+        throw new Error(
+          `You need ${automaticCollateral.collateralAmount} ${collateralSymbol ?? "memecoin"}, but your wallet has ${automaticCollateral.walletCollateralAmount}. Get ${automaticCollateral.missingCollateralAmount} more first.`,
+        );
       const transaction =
         action === "Borrow"
           ? await buildBorrowWithCollateralTransaction({
@@ -177,6 +202,17 @@ export function TransactionPanel({
           <span className="help">
             {collateralQuote ||
               "The app uses the fresh on-chain oracle price and adds a safety buffer automatically."}
+          </span>
+        </div>
+      ) : null}
+      {action === "Supply" && publicKey ? (
+        <div className="field">
+          <span className="field-label">Available in your wallet</span>
+          <strong className="calculated-value">
+            {supplyBalance ? `${supplyBalance} USDC` : "Checking…"}
+          </strong>
+          <span className="help">
+            This is the most USDC you can supply from this wallet right now.
           </span>
         </div>
       ) : null}
@@ -278,8 +314,7 @@ export function TransactionPanel({
           !selectedMarket ||
           status === "checking" ||
           status === "sending" ||
-          status === "confirming" ||
-          (action === "Borrow" && !collateralAmount)
+          status === "confirming"
         }
         onClick={submit}
       >
