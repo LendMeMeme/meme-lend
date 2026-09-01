@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import { PositionsClient } from "@/components/positions-client";
 import { getMarkets } from "@/lib/data";
+
+export const metadata: Metadata = {
+  title: "Positions",
+  description: "View isolated lender and borrower positions directly from Solana.",
+};
 
 export default async function PositionsPage() {
   const markets = await getMarkets();

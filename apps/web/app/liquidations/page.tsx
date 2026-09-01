@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { TransactionPanel } from "@/components/transaction-panel";
+
+export const metadata: Metadata = {
+  title: "Liquidations",
+  description: "Inspect and liquidate unhealthy isolated borrowing positions on Solana.",
+};
+
 export default function LiquidationsPage() {
   return (
     <main className="shell">

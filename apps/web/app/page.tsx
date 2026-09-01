@@ -70,7 +70,7 @@ export default function HomePage() {
           </div>
           <div className="program-strip">
             <span>Program</span>
-            <code>FvnW…jFaX</code>
+            <code>8hDE…uJym</code>
           </div>
         </aside>
       </section>
