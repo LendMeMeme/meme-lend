@@ -1,30 +1,27 @@
 "use client";
-import { useState } from "react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { ChevronDown, Wallet } from "lucide-react";
 import { useWallet } from "@/components/wallet-context";
 export function WalletControl() {
-  const wallet = useWallet();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const label = wallet.publicKey
-    ? `${wallet.publicKey.toBase58().slice(0, 4)}…${wallet.publicKey.toBase58().slice(-4)}`
-    : "Connect wallet";
+  const { connected, connecting, disconnecting, publicKey, disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
+  const address = publicKey?.toBase58();
+  const label = address ? `${address.slice(0, 4)}…${address.slice(-4)}` : "Connect wallet";
+  const busy = connecting || disconnecting;
   return (
     <button
       className="wallet-adapter-button"
       disabled={busy}
       onClick={() => {
-        setBusy(true);
-        setError("");
-        void (wallet.connected ? wallet.disconnect() : wallet.connect())
-          .catch((cause: unknown) =>
-            setError(cause instanceof Error ? cause.message : "Wallet connection failed"),
-          )
-          .finally(() => setBusy(false));
+        if (connected) void disconnect();
+        else setVisible(true);
       }}
-      title={error || undefined}
-      aria-label={error || label}
+      title={connected ? "Disconnect wallet" : "Choose a Solana wallet"}
+      aria-label={connected ? `Wallet ${address}. Disconnect wallet` : "Choose a Solana wallet"}
     >
+      <Wallet aria-hidden="true" size={16} />
       {busy ? "Opening…" : label}
+      {!connected ? <ChevronDown aria-hidden="true" size={14} /> : null}
     </button>
   );
 }

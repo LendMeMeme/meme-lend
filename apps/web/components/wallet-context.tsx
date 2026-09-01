@@ -1,80 +1,29 @@
 "use client";
-import { Connection, PublicKey, type Transaction } from "@solana/web3.js";
-import { createContext, useContext, useMemo, useState } from "react";
 
-type InjectedWallet = {
-  publicKey?: { toString(): string };
-  connect(): Promise<{ publicKey: { toString(): string } }>;
-  disconnect(): Promise<void>;
-  signTransaction(transaction: Transaction): Promise<Transaction>;
-};
-declare global {
-  interface Window {
-    solana?: InjectedWallet;
-    phantom?: { solana?: InjectedWallet };
-    solflare?: InjectedWallet;
-  }
-}
-type WalletState = {
-  connection: Connection;
-  connected: boolean;
-  publicKey: PublicKey | null;
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  sendTransaction(
-    transaction: Transaction,
-    connection?: Connection,
-    options?: { preflightCommitment?: "confirmed" },
-  ): Promise<string>;
-};
-const Context = createContext<WalletState | null>(null);
+import {
+  ConnectionProvider,
+  WalletProvider,
+  useConnection,
+  useWallet,
+} from "@solana/wallet-adapter-react";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { useMemo } from "react";
 
 export function WalletContext({ children }: { children: React.ReactNode }) {
-  const connection = useMemo(
+  const endpoint = useMemo(
     () =>
-      new Connection(
-        typeof window === "undefined"
-          ? "http://127.0.0.1:3000/api/solana-rpc"
-          : `${window.location.origin}/api/solana-rpc`,
-        { commitment: "confirmed" },
-      ),
+      typeof window === "undefined"
+        ? "http://127.0.0.1:3000/api/solana-rpc"
+        : `${window.location.origin}/api/solana-rpc`,
     [],
   );
-  const [provider, setProvider] = useState<InjectedWallet | null>(null);
-  const [publicKey, setPublicKey] = useState<PublicKey | null>(null);
-  const selected = () => window.phantom?.solana ?? window.solflare ?? window.solana;
-  const value: WalletState = {
-    connection,
-    connected: publicKey !== null,
-    publicKey,
-    async connect() {
-      const next = selected();
-      if (!next) throw new Error("Install Phantom or Solflare to connect a Solana wallet");
-      const response = await next.connect();
-      setProvider(next);
-      setPublicKey(new PublicKey(response.publicKey.toString()));
-    },
-    async disconnect() {
-      await provider?.disconnect();
-      setProvider(null);
-      setPublicKey(null);
-    },
-    async sendTransaction(transaction, selectedConnection = connection, options) {
-      if (!provider || !publicKey) throw new Error("Connect a wallet first");
-      const signed = await provider.signTransaction(transaction);
-      return selectedConnection.sendRawTransaction(signed.serialize(), {
-        preflightCommitment: options?.preflightCommitment ?? "confirmed",
-      });
-    },
-  };
-  return <Context.Provider value={value}>{children}</Context.Provider>;
+  return (
+    <ConnectionProvider endpoint={endpoint} config={{ commitment: "confirmed" }}>
+      <WalletProvider wallets={[]} autoConnect>
+        <WalletModalProvider>{children}</WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
 }
 
-export function useWallet() {
-  const value = useContext(Context);
-  if (!value) throw new Error("WalletContext is missing");
-  return value;
-}
-export function useConnection() {
-  return { connection: useWallet().connection };
-}
+export { useConnection, useWallet };

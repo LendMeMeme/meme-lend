@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMarket } from "@/lib/data";
-import { TransactionPanel } from "@/components/transaction-panel";
+import { MarketActions } from "@/components/market-actions";
 type Props = { params: Promise<{ address: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
@@ -62,38 +62,14 @@ export default async function MarketPage({ params }: Props) {
         </div>
       </div>
       <section className="section">
-        <div className="eyebrow">Lend and borrow</div>
-        <h2>Use this isolated market.</h2>
-        <div className="grid section">
-          <div className="span-6">
-            <TransactionPanel
-              action="Supply"
-              market={m.address}
-              risk="You accept this market’s collateral, oracle, liquidity, and liquidation risk. This is also how to add initial USDC liquidity after market creation."
-            />
+        <div className="section-head">
+          <div>
+            <div className="eyebrow">Lend or borrow</div>
+            <h2>What would you like to do?</h2>
           </div>
-          <div className="span-6">
-            <TransactionPanel
-              action="Deposit collateral"
-              market={m.address}
-              risk="Adding collateral remains available even if the oracle is stale or borrowing is paused."
-            />
-          </div>
-          <div className="span-6">
-            <TransactionPanel
-              action="Borrow"
-              market={m.address}
-              risk="Borrowing requires a fresh oracle observation and must remain below every immutable health and cap limit."
-            />
-          </div>
-          <div className="span-6">
-            <TransactionPanel
-              action="Repay"
-              market={m.address}
-              risk="Repayment remains available even if the oracle fails or borrowing is paused."
-            />
-          </div>
+          <p className="muted">Each action uses this market only.</p>
         </div>
+        <MarketActions market={m.address} />
       </section>
       <div className="grid section">
         <section className="card panel span-7">

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import "./globals.css";
+import "@solana/wallet-adapter-react-ui/styles.css";
 import { WalletContext } from "@/components/wallet-context";
 import { WalletControl } from "@/components/wallet-control";
 import { ThemeToggle } from "@/components/theme-toggle";
