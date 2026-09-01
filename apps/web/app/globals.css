@@ -822,7 +822,21 @@ tbody tr:hover {
   margin-bottom: 10px;
 }
 .stat strong {
+  display: block;
   font-size: 20px;
+}
+.stat strong small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.stat > small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 .market-workspace {
   overflow: hidden;

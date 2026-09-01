@@ -67,7 +67,20 @@ const api = createServer(async (request, response) => {
     }
     const marketMatch = url.pathname.match(/^\/markets\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
     if (marketMatch) {
-      const market = await database.markets().findOne({ address: marketMatch[1] });
+      let market = await database.markets().findOne({ address: marketMatch[1] });
+      if (!market) {
+        try {
+          await refreshMarket(
+            connection,
+            database,
+            marketMatch[1]!,
+            await connection.getSlot("finalized"),
+          );
+          market = await database.markets().findOne({ address: marketMatch[1] });
+        } catch {
+          // A missing or invalid on-chain account remains a normal 404.
+        }
+      }
       if (!market) {
         response.statusCode = 404;
         response.end(JSON.stringify({ error: "Market not found" }));
@@ -131,25 +144,35 @@ for (;;) {
 // MongoDB is a recoverable projection, not the source of truth. Reconcile every
 // on-chain market at startup so a websocket outage or a checkpoint advancing past
 // an unprocessed signature cannot permanently hide a valid market.
-const [legacyMarkets, configurableMarkets, reconciliationSlot] = await Promise.all([
-  connection.getProgramAccounts(programId, {
-    commitment: "finalized",
-    filters: [{ dataSize: 260 }],
-  }),
-  connection.getProgramAccounts(programId, {
-    commitment: "finalized",
-    filters: [{ dataSize: 311 }],
-  }),
-  connection.getSlot("finalized"),
-]);
-const marketAccounts = [...legacyMarkets, ...configurableMarkets];
-for (const { pubkey } of marketAccounts) {
+let reconciliationRunning = false;
+async function reconcileAllMarkets(): Promise<void> {
+  if (reconciliationRunning) return;
+  reconciliationRunning = true;
   try {
-    await refreshMarket(connection, database, pubkey.toBase58(), reconciliationSlot);
-  } catch (error) {
-    console.error(`Failed to reconcile market ${pubkey.toBase58()}`, error);
+    const [legacyMarkets, configurableMarkets, reconciliationSlot] = await Promise.all([
+      connection.getProgramAccounts(programId, {
+        commitment: "finalized",
+        filters: [{ dataSize: 260 }],
+      }),
+      connection.getProgramAccounts(programId, {
+        commitment: "finalized",
+        filters: [{ dataSize: 311 }],
+      }),
+      connection.getSlot("finalized"),
+    ]);
+    for (const { pubkey } of [...legacyMarkets, ...configurableMarkets]) {
+      try {
+        await refreshMarket(connection, database, pubkey.toBase58(), reconciliationSlot);
+      } catch (error) {
+        console.error(`Failed to reconcile market ${pubkey.toBase58()}`, error);
+      }
+    }
+  } finally {
+    reconciliationRunning = false;
   }
 }
+await reconcileAllMarkets();
+const reconciliationTimer = setInterval(() => void reconcileAllMarkets(), 60_000);
 
 const subscription = connection.onLogs(
   programId,
@@ -170,6 +193,7 @@ const subscription = connection.onLogs(
   "finalized",
 );
 while (running) await new Promise((resolve) => setTimeout(resolve, 1000));
+clearInterval(reconciliationTimer);
 await connection.removeOnLogsListener(subscription);
 await new Promise<void>((resolve, reject) =>
   api.close((error) => (error ? reject(error) : resolve())),
