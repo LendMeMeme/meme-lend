@@ -27,14 +27,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install the official verified-build CLI
-        run: cargo install --git https://github.com/solana-foundation/solana-verifiable-build --rev 17e839a8 --locked solana-verify
-
       - name: Build optimized Pinocchio program in the pinned verifier image
         run: |
-          solana-verify build . --workspace-path . --library-name meme_lending_pinocchio -- --features bpf-entrypoint
           mkdir -p target/verifiable
-          cp target/deploy/meme_lending_pinocchio.so target/verifiable/meme_lending_pinocchio.so
+          docker run --rm \
+            --volume "$PWD:/build" \
+            --workdir /build \
+            solanafoundation/solana-verifiable-build@sha256:6c73adc767ee7ff212f2532d4695472b12f3d4ac20aea3db22b89d8c614dac50 \
+            cargo build-sbf --manifest-path programs/meme_lending_pinocchio/Cargo.toml \
+              --features bpf-entrypoint --sbf-out-dir target/verifiable
 
       - name: Verify embedded security metadata
         run: |
