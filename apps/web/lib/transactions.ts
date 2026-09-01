@@ -26,6 +26,7 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+  TransactionInstruction,
   type AccountMeta,
   type Connection,
 } from "@solana/web3.js";
@@ -153,6 +154,7 @@ async function data(connection: Connection, key: PublicKey): Promise<Uint8Array>
 }
 
 export async function buildCreateMarketTransaction(input: {
+  marketName: string;
   collateralMint: string;
   lltvBps: 3000 | 4000 | 5000 | 6000 | 6500;
   rateCurve: ImmutableRateCurve;
@@ -163,6 +165,11 @@ export async function buildCreateMarketTransaction(input: {
   connection: Connection;
 }): Promise<{ transaction: Transaction; liquidityTransaction: Transaction; market: PublicKey }> {
   const programId = id();
+  const marketName = input.marketName.trim().replace(/\s+/g, " ");
+  if (marketName.length < 3 || marketName.length > 50)
+    throw new Error("Market name must be between 3 and 50 characters");
+  if (!/^[\p{L}\p{N} .,'&()_-]+$/u.test(marketName))
+    throw new Error("Market name contains unsupported characters");
   const [globalConfig] = pinocchioPdas.globalConfig(programId);
   const global = decodePinocchioGlobalConfig(await data(input.connection, globalConfig));
   if (global.paused) throw new Error("Protocol market creation is paused");
@@ -283,6 +290,11 @@ export async function buildCreateMarketTransaction(input: {
       encoded.data,
       programId,
     ),
+    new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from(`lend-meme-loans:market-name:${marketName}`, "utf8"),
+    }),
   );
   const ownerLoan = associatedTokenAddress(loanMint, input.owner, loanTokenProgram);
   const ownerLoanAccount = await input.connection.getAccountInfo(ownerLoan, "confirmed");

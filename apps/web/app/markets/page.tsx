@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Markets",
   description: "Explore isolated memecoin lending markets and their exact risk terms.",
 };
+export const dynamic = "force-dynamic";
 export default async function MarketsPage() {
   const result = await getMarkets();
   return (

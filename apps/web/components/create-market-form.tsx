@@ -63,6 +63,7 @@ export function CreateMarketForm({ initialStrategy }: { initialStrategy?: string
   const router = useRouter();
   const wallet = useWallet();
   const { connection } = useConnection();
+  const [marketName, setMarketName] = useState("");
   const [collateralMint, setCollateralMint] = useState("");
   const [setupMode, setSetupMode] = useState<"basic" | "advanced">(
     selectedStrategy ? "advanced" : "basic",
@@ -138,6 +139,7 @@ export function CreateMarketForm({ initialStrategy }: { initialStrategy?: string
     let createdMarket: string | null = null;
     try {
       const result = await buildCreateMarketTransaction({
+        marketName,
         collateralMint,
         lltvBps: setupMode === "basic" ? 5000 : lltvBps,
         rateCurve: setupMode === "basic" ? RATE_MODELS.balanced.curve : rateCurve!,
@@ -251,6 +253,23 @@ export function CreateMarketForm({ initialStrategy }: { initialStrategy?: string
           <strong>Your memecoin</strong>
           <small>Selected by mint address below</small>
         </div>
+      </div>
+      <div className="field">
+        <label htmlFor="market-name">Market name</label>
+        <input
+          id="market-name"
+          value={marketName}
+          maxLength={50}
+          onChange={(event) => {
+            setMarketName(event.target.value);
+            resetReview();
+          }}
+          placeholder="For example, GPRO Community Market"
+        />
+        <span className="help">
+          A public display name recorded with the market creation transaction. The token / USDC pair
+          and immutable address remain visible underneath.
+        </span>
       </div>
       <div className="field">
         <label htmlFor="collateral-mint">Memecoin collateral mint</label>

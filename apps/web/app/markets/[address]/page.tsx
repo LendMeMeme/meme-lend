@@ -41,20 +41,15 @@ export default async function MarketPage({ params }: Props) {
   const m = result.data;
   const tokenLabel =
     m.collateralSymbol ?? `${m.collateralMint.slice(0, 4)}…${m.collateralMint.slice(-4)}`;
+  const marketTitle = m.marketName ?? m.collateralName ?? `${tokenLabel} market`;
   const usdc = (raw: string) => `${Number(raw) / 1_000_000} USDC`;
   const totalUsdc = (BigInt(m.availableUsdc) + BigInt(m.borrowedUsdc)).toString();
   return (
     <main className="shell">
       <header className="page-head">
         <div className="eyebrow">Market overview</div>
-        <h1>{tokenLabel} / USDC</h1>
-        {m.collateralName ? <p className="muted">{m.collateralName}</p> : null}
-        {m.extremeRateRisk ? (
-          <div className="risk-banner">
-            <strong>Experimental / high-risk rates</strong>
-            <span>Maximum borrowing cost is above 100% APR.</span>
-          </div>
-        ) : null}
+        <h1>{marketTitle}</h1>
+        <p className="market-pair">{tokenLabel} / USDC</p>
         <p className="lede">
           Every value below belongs only to this market. Status is discovery metadata, not a safety
           guarantee.
@@ -75,6 +70,13 @@ export default async function MarketPage({ params }: Props) {
         <div className="stat">
           <span>Available USDC</span>
           <strong>{usdc(m.availableUsdc)}</strong>
+        </div>
+        <div className="stat">
+          <span>Borrowable now</span>
+          <strong>{m.maxBorrowableUsdc == null ? "Paused" : usdc(m.maxBorrowableUsdc)}</strong>
+          <small>
+            {m.maxBorrowableUsdc == null ? "Waiting for a fresh safe price" : "Across this market"}
+          </small>
         </div>
         <div className="stat">
           <span>USDC being used</span>

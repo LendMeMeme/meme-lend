@@ -16,6 +16,7 @@ export interface MarketTag {
 }
 export interface MarketView {
   address: string;
+  marketName?: string | null;
   collateralMint: string;
   collateralName: string | null;
   collateralSymbol: string | null;
@@ -40,6 +41,7 @@ export interface MarketView {
   suppliedUsdc: string;
   borrowedUsdc: string;
   availableUsdc: string;
+  maxBorrowableUsdc?: string | null;
   utilizationBps: number;
   firstLossReserve: string;
   badDebt: string;
@@ -47,6 +49,8 @@ export interface MarketView {
   collateralLiquidityUsd: string | null;
   estimatedSellSlippageBps: number | null;
   slot: number;
+  createdSlot?: number | null;
+  createdAt?: string | null;
   updatedAt: string;
 }
 

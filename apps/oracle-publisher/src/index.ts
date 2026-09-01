@@ -15,6 +15,9 @@ let lastSuccessAt: string | null = null;
 let consecutiveFailedCycles = 0;
 let latestFailures: Array<{ market: string; error: string }> = [];
 let balanceLamports: number | null = null;
+let discoveredMarkets = 0;
+let publishableMarkets = 0;
+let serviceOperational = false;
 
 for (const signal of ["SIGTERM", "SIGINT"] as const)
   process.on(signal, () => {
@@ -41,17 +44,21 @@ async function cycle(): Promise<void> {
         `Publisher balance ${balanceLamports} is below ${config.minimumBalanceLamports} lamports`,
       );
     const result = await publishAll(connection, signer, config);
+    serviceOperational = true;
     lastCycleAt = new Date().toISOString();
+    lastSuccessAt = lastCycleAt;
     latestFailures = result.failures;
+    discoveredMarkets = result.discovered;
+    publishableMarkets = result.discovered - result.failures.length;
     if (result.failures.length > 0) {
       consecutiveFailedCycles += 1;
       if (consecutiveFailedCycles === 1 || consecutiveFailedCycles % 4 === 0)
         await alert(`Oracle cycle has ${result.failures.length} failed market(s)`);
     } else {
       consecutiveFailedCycles = 0;
-      lastSuccessAt = lastCycleAt;
     }
   } catch (error) {
+    serviceOperational = false;
     consecutiveFailedCycles += 1;
     latestFailures = [
       { market: "service", error: error instanceof Error ? error.message : "Unknown failure" },
@@ -77,7 +84,10 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.url === "/ready") {
-    const ready = consecutiveFailedCycles < 3;
+    const ready =
+      serviceOperational &&
+      balanceLamports !== null &&
+      balanceLamports >= config.minimumBalanceLamports;
     response.statusCode = ready ? 200 : 503;
     response.end(
       JSON.stringify({
@@ -85,6 +95,10 @@ const server = createServer((request, response) => {
         balanceLamports,
         lastSuccessAt,
         consecutiveFailedCycles,
+        serviceOperational,
+        discoveredMarkets,
+        publishableMarkets,
+        rejectedMarkets: latestFailures.length,
         failures: latestFailures,
       }),
     );

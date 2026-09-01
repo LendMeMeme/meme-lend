@@ -1,4 +1,8 @@
-import type { ConfirmedSignatureInfo, ParsedTransactionWithMeta, PublicKey } from "@solana/web3.js";
+import {
+  PublicKey,
+  type ConfirmedSignatureInfo,
+  type ParsedTransactionWithMeta,
+} from "@solana/web3.js";
 import type { IndexedTransaction } from "@meme-lend/shared";
 
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -67,6 +71,23 @@ const MARKET_INDEX: Array<number | null> = [
 ];
 const ACTOR_INDEX: Array<number | null> = [0, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 const AMOUNT_TAGS = new Set([5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+const MARKET_NAME_PREFIX = "lend-meme-loans:market-name:";
+
+function marketNameMemo(transaction: ParsedTransactionWithMeta): string | null {
+  for (const instruction of transaction.transaction.message.instructions) {
+    if (!instruction.programId.equals(MEMO_PROGRAM)) continue;
+    let memo: string | null = null;
+    if ("parsed" in instruction && typeof instruction.parsed === "string")
+      memo = instruction.parsed;
+    else if ("data" in instruction) memo = new TextDecoder().decode(base58(instruction.data));
+    if (memo?.startsWith(MARKET_NAME_PREFIX)) {
+      const name = memo.slice(MARKET_NAME_PREFIX.length).trim();
+      if (name.length >= 3 && name.length <= 50) return name;
+    }
+  }
+  return null;
+}
 
 function little(data: Uint8Array, offset: number, length: number): bigint {
   let result = 0n;
@@ -80,6 +101,7 @@ export function eventRecords(
   transaction: ParsedTransactionWithMeta,
   programId: PublicKey,
 ): IndexedTransaction[] {
+  const displayName = marketNameMemo(transaction);
   return transaction.transaction.message.instructions.flatMap((instruction, eventIndex) => {
     if (
       !("data" in instruction) ||
@@ -97,6 +119,7 @@ export function eventRecords(
     const actor =
       actorIndex === null ? null : (instruction.accounts[actorIndex]?.toBase58() ?? null);
     const payload: Record<string, unknown> = { tag };
+    if (tag === 1 && displayName) payload.marketName = displayName;
     if (AMOUNT_TAGS.has(tag) && bytes.length >= 9)
       payload.amount = little(bytes, 1, tag === 6 ? 16 : 8).toString();
     return [

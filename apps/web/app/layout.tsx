@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 export const metadata: Metadata = {
   title: { default: "Lend Meme Loans", template: "%s · Lend Meme Loans" },
   description: "Create isolated USDC lending markets for memecoin collateral on Solana.",
+  icons: { icon: "/icon.png", shortcut: "/icon.png", apple: "/icon.png" },
 };
 export const viewport: Viewport = {
   themeColor: [

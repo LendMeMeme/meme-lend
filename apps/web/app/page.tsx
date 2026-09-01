@@ -1,7 +1,14 @@
 import Link from "next/link";
-import { ArrowRight, CircleDollarSign, HandCoins, ShieldCheck, Orbit } from "lucide-react";
+import { ArrowRight, CircleDollarSign, HandCoins, ShieldCheck } from "lucide-react";
+import { MarketCards } from "@/components/market-cards";
+import { getMarkets } from "@/lib/data";
+import { homepageSections } from "@/lib/market-discovery";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const result = await getMarkets();
+  const sections = result.state === "ready" ? homepageSections(result.data) : null;
   return (
     <main className="shell">
       <section className="hero">
@@ -66,16 +73,55 @@ export default function HomePage() {
             View all markets →
           </Link>
         </div>
-        <div className="card empty">
-          <div className="empty-icon">
-            <Orbit size={23} />
+        {sections && Object.values(sections).some((markets) => markets.length > 0) ? (
+          <div className="discovery-sections">
+            {[
+              {
+                title: "Most liquid",
+                note: "Markets with the most USDC supplied.",
+                markets: sections.liquid,
+              },
+              {
+                title: "Active borrowing",
+                note: "Markets where borrowers are using USDC.",
+                markets: sections.active,
+              },
+              {
+                title: "New markets",
+                note: "Recently created isolated markets.",
+                markets: sections.new,
+              },
+              {
+                title: "Experimental high-rate",
+                note: "Unusually expensive borrowing. Review carefully.",
+                markets: sections.experimental,
+              },
+            ]
+              .filter((section) => section.markets.length > 0)
+              .map((section) => (
+                <section key={section.title} className="discovery-section">
+                  <div className="compact-heading">
+                    <div>
+                      <h3>{section.title}</h3>
+                      <p>{section.note}</p>
+                    </div>
+                    <Link href="/markets">View all →</Link>
+                  </div>
+                  <MarketCards markets={section.markets} />
+                </section>
+              ))}
           </div>
-          <h3>No indexed markets available</h3>
-          <p className="muted">
-            Markets will appear after the indexer connects and observes confirmed on-chain creation
-            events.
-          </p>
-        </div>
+        ) : result.state === "ready" ? (
+          <div className="card empty">
+            <h3>No markets indexed yet</h3>
+            <p className="muted">New markets usually appear here around 30 seconds after launch.</p>
+          </div>
+        ) : (
+          <div className="card empty">
+            <h3>Live markets are temporarily unavailable</h3>
+            <p className="muted">No estimated or fallback market data is shown.</p>
+          </div>
+        )}
         <div className="steps">
           <article className="card step">
             <span className="step-number">01 / CREATE</span>
@@ -100,18 +146,6 @@ export default function HomePage() {
               Limits use oracle value, cash, caps, and a conservative recoverable-liquidity ceiling.
             </p>
           </article>
-        </div>
-      </section>
-      <section className="section">
-        <div className="risk-note">
-          <div className="risk-label">Risk notice</div>
-          <div>
-            <strong>Every market has its own risk profile.</strong>
-            <p>
-              Review the oracle, liquidity, borrowing limit, and first-loss reserve before
-              supplying. Reserves reduce risk; they do not guarantee repayment.
-            </p>
-          </div>
         </div>
       </section>
     </main>

@@ -493,6 +493,107 @@ h1 {
 .table-wrap {
   overflow: auto;
 }
+.market-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.market-controls label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.market-controls select {
+  min-height: 38px;
+  padding: 0 34px 0 12px;
+}
+.check-control input {
+  width: 16px;
+  height: 16px;
+}
+.discovery-sections {
+  display: grid;
+  gap: 42px;
+}
+.discovery-section {
+  display: grid;
+  gap: 16px;
+}
+.compact-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+.compact-heading h3 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+.compact-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.market-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.market-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  box-shadow: none;
+}
+.market-card h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.025em;
+}
+.market-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.market-card dl {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+}
+.market-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.market-card dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.market-card dd {
+  margin: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 650;
+}
+.market-card dd small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.market-card .button {
+  margin-top: auto;
+}
+.market-pair {
+  margin: -7px 0 16px;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 650;
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1325,6 +1426,9 @@ tbody tr:hover {
   border-radius: 5px;
 }
 @media (max-width: 840px) {
+  .market-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
   .shell {
     width: min(100% - 32px, 1120px);
   }
@@ -1393,6 +1497,14 @@ tbody tr:hover {
   }
 }
 @media (max-width: 560px) {
+  .market-controls,
+  .compact-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .market-card-grid {
+    grid-template-columns: 1fr;
+  }
   .nav {
     min-height: 68px;
     gap: 10px;

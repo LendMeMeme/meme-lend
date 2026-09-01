@@ -88,6 +88,16 @@ export async function refreshMarket(
     observation !== null &&
     observation.publishedAt <= now &&
     now - observation.publishedAt <= BigInt(oracle.maxAgeSeconds);
+  const remainingMarketCap = market.marketBorrowCap > debt ? market.marketBorrowCap - debt : 0n;
+  const remainingRecoverable =
+    observation && observation.maxRecoverableUsdc > debt
+      ? observation.maxRecoverableUsdc - debt
+      : 0n;
+  const maxBorrowable = fresh
+    ? [cash, remainingMarketCap, remainingRecoverable].reduce((left, right) =>
+        left < right ? left : right,
+      )
+    : null;
   const ageDays = firstEvent?.blockTime
     ? Math.floor((Date.now() - new Date(firstEvent.blockTime).getTime()) / 86_400_000)
     : 0;
@@ -104,6 +114,8 @@ export async function refreshMarket(
   });
   const view: MarketView = {
     address: marketAddress,
+    marketName:
+      typeof firstEvent?.payload.marketName === "string" ? firstEvent.payload.marketName : null,
     collateralMint: market.collateralMint.toBase58(),
     collateralName: metadata.name,
     collateralSymbol: metadata.symbol,
@@ -142,6 +154,7 @@ export async function refreshMarket(
     suppliedUsdc: supplied.toString(),
     borrowedUsdc: debt.toString(),
     availableUsdc: cash.toString(),
+    maxBorrowableUsdc: maxBorrowable?.toString() ?? null,
     utilizationBps,
     firstLossReserve: reserve.deposited.toString(),
     badDebt: market.badDebt.toString(),
@@ -151,6 +164,8 @@ export async function refreshMarket(
     collateralLiquidityUsd: null,
     estimatedSellSlippageBps: null,
     slot,
+    createdSlot: firstEvent?.slot ?? null,
+    createdAt: firstEvent?.blockTime ?? null,
     updatedAt: new Date().toISOString(),
   };
   await database.upsertMarket(view);

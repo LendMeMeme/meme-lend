@@ -28,7 +28,11 @@ export async function publishAll(
   connection: Connection,
   signer: Keypair,
   config: PublisherConfig,
-): Promise<{ published: PublishOutcome[]; failures: Array<{ market: string; error: string }> }> {
+): Promise<{
+  published: PublishOutcome[];
+  failures: Array<{ market: string; error: string }>;
+  discovered: number;
+}> {
   const accounts = await connection.getProgramAccounts(config.programId, {
     commitment: "confirmed",
     filters: [{ dataSize: PINOCCHIO_MARKET_LEN }],
@@ -52,7 +56,7 @@ export async function publishAll(
       });
     }
   }
-  return { published, failures };
+  return { published, failures, discovered: accounts.length };
 }
 
 export async function publishMarket(

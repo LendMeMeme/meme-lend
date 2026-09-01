@@ -27,6 +27,27 @@ describe("eventRecords", () => {
     });
   });
 
+  it("attaches a creator-supplied market name from the transaction memo", () => {
+    const programId = PublicKey.unique();
+    const accounts = Array.from({ length: 6 }, () => PublicKey.unique());
+    const transaction = {
+      transaction: {
+        message: {
+          instructions: [
+            {
+              programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+              parsed: "lend-meme-loans:market-name:GPRO Growth Market",
+            },
+            { programId, accounts, data: "2" },
+          ],
+        },
+      },
+    } as never;
+    expect(eventRecords(signature, transaction, programId)[0]?.payload.marketName).toBe(
+      "GPRO Growth Market",
+    );
+  });
+
   it("ignores instructions owned by another program", () => {
     const transaction = {
       transaction: {

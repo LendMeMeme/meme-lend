@@ -71,11 +71,16 @@ async function quote(
     slippageBps: String(config.maxJupiterPriceImpactBps),
   }))
     url.searchParams.set(key, value);
-  const response = await fetch(url, {
-    headers: { "x-api-key": config.jupiterApiKey },
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!response.ok) throw new Error(`Jupiter quote returned ${response.status}`);
+  let response: Response | null = null;
+  for (const delay of [0, 400, 1_000]) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    response = await fetch(url, {
+      headers: { "x-api-key": config.jupiterApiKey },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (response.status !== 429) break;
+  }
+  if (!response?.ok) throw new Error(`Jupiter quote returned ${response?.status ?? "no response"}`);
   const value = (await response.json()) as JupiterQuote;
   if (
     value.inputMint !== inputMint ||
@@ -106,8 +111,6 @@ export async function pumpBondingCurvePrice(
   config: PublisherConfig,
 ): Promise<PriceResult> {
   if (!config.enableSingleVenueMode) throw new Error("Pump single-venue mode is disabled");
-  if (marketLltvBps > config.singleVenueMaxLltvBps)
-    throw new Error("Market LLTV exceeds the Pump single-venue safety ceiling");
   const mintKey = new PublicKey(mint);
   const [curveKey] = PublicKey.findProgramAddressSync(
     [Buffer.from("bonding-curve"), mintKey.toBuffer()],
@@ -122,34 +125,33 @@ export async function pumpBondingCurvePrice(
   if (!mintInfo || mintInfo.data.length < 82) throw new Error("Pump collateral mint is invalid");
   const curve = decodePumpCurve(curveInfo.data);
   if (curve.complete) throw new Error("Pump bonding curve has graduated");
+  if (marketLltvBps > config.singleVenueMaxLltvBps)
+    throw new Error("Market LLTV exceeds the Pump single-venue safety ceiling");
   if (!curve.quoteMint.equals(PublicKey.default))
     throw new Error("Only SOL-paired Pump bonding curves are currently supported");
   const decimals = mintInfo.data[44]!;
   const sizes = [10n, 50n, 100n]
     .map((bps) => (curve.realTokenReserves * bps) / 10_000n)
     .filter((amount) => amount > 0n);
-  const results = await Promise.all(
-    sizes.map(async (amount) => {
-      const expectedSol = pumpSellQuote(curve, amount);
-      const [tokenQuote, solQuote] = await Promise.all([
-        quote(mint, USDC, amount, config),
-        quote(WSOL, USDC, expectedSol, config),
-      ]);
-      if (
-        !tokenQuote.routePlan?.some(
-          ({ swapInfo }) =>
-            swapInfo?.inputMint === mint && swapInfo.label?.toLowerCase().includes("pump"),
-        )
+  const results: Array<{ amount: bigint; output: bigint; disagreement: number }> = [];
+  for (const amount of sizes) {
+    const expectedSol = pumpSellQuote(curve, amount);
+    const tokenQuote = await quote(mint, USDC, amount, config);
+    const solQuote = await quote(WSOL, USDC, expectedSol, config);
+    if (
+      !tokenQuote.routePlan?.some(
+        ({ swapInfo }) =>
+          swapInfo?.inputMint === mint && swapInfo.label?.toLowerCase().includes("pump"),
       )
-        throw new Error("Jupiter route does not originate from the official Pump venue");
-      const tokenOut = BigInt(tokenQuote.otherAmountThreshold);
-      const curveOut = BigInt(solQuote.otherAmountThreshold);
-      const disagreement = integerDeviationBps(tokenOut, curveOut);
-      if (disagreement > config.maxSourceDeviationBps)
-        throw new Error(`Pump reserves and executable quote disagree by ${disagreement} bps`);
-      return { amount, output: tokenOut < curveOut ? tokenOut : curveOut, disagreement };
-    }),
-  );
+    )
+      throw new Error("Jupiter route does not originate from the official Pump venue");
+    const tokenOut = BigInt(tokenQuote.otherAmountThreshold);
+    const curveOut = BigInt(solQuote.otherAmountThreshold);
+    const disagreement = integerDeviationBps(tokenOut, curveOut);
+    if (disagreement > config.maxSourceDeviationBps)
+      throw new Error(`Pump reserves and executable quote disagree by ${disagreement} bps`);
+    results.push({ amount, output: tokenOut < curveOut ? tokenOut : curveOut, disagreement });
+  }
   const unitScale = 10n ** BigInt(decimals);
   const prices = results.map(({ amount, output }) => (output * unitScale * 1_000_000n) / amount);
   const conservativePrice = prices.reduce((left, right) => (left < right ? left : right));
