@@ -56,6 +56,7 @@ export function CreateMarketForm() {
   const wallet = useWallet();
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
+  const [setupMode, setSetupMode] = useState<"basic" | "advanced">("basic");
   const [lltvBps, setLltvBps] = useState<3000 | 4000 | 5000 | 6000 | 6500>(5000);
   const [rateChoice, setRateChoice] = useState<RateChoice>("balanced");
   const [startApr, setStartApr] = useState("2");
@@ -114,10 +115,10 @@ export function CreateMarketForm() {
     try {
       const result = await buildCreateMarketTransaction({
         collateralMint,
-        lltvBps,
-        rateCurve: rateCurve!,
-        marketBorrowCap: marketCap,
-        walletBorrowCap: walletCap,
+        lltvBps: setupMode === "basic" ? 5000 : lltvBps,
+        rateCurve: setupMode === "basic" ? RATE_MODELS.balanced.curve : rateCurve!,
+        marketBorrowCap: setupMode === "basic" ? "10000" : marketCap,
+        walletBorrowCap: setupMode === "basic" ? "1000" : walletCap,
         initialLiquidity,
         owner: wallet.publicKey,
         connection,
@@ -175,6 +176,34 @@ export function CreateMarketForm() {
   return (
     <section className="card panel span-7">
       <h2>Market configuration</h2>
+      <div className="setup-choice" role="tablist" aria-label="Market setup level">
+        <button
+          type="button"
+          className={setupMode === "basic" ? "active" : ""}
+          onClick={() => {
+            setSetupMode("basic");
+            resetReview();
+          }}
+          role="tab"
+          aria-selected={setupMode === "basic"}
+        >
+          <strong>Basic</strong>
+          <span>Add your token and starting USDC. We apply safer standard settings.</span>
+        </button>
+        <button
+          type="button"
+          className={setupMode === "advanced" ? "active" : ""}
+          onClick={() => {
+            setSetupMode("advanced");
+            resetReview();
+          }}
+          role="tab"
+          aria-selected={setupMode === "advanced"}
+        >
+          <strong>Advanced</strong>
+          <span>Choose every permanent risk limit and borrowing-rate setting.</span>
+        </button>
+      </div>
       <div className="asset-pair" aria-label="Market asset pair">
         <div>
           <span>Borrow and lend</span>
@@ -206,185 +235,219 @@ export function CreateMarketForm() {
           can change balances, fees, transfers, or liquidation behavior are rejected.
         </span>
       </div>
-      <div className="field oracle-managed">
-        <span className="field-label">Oracle service</span>
-        <strong>Lend Meme Loans managed oracle</strong>
-        <span className="help">
-          Primary and backup publishers aggregate independent price sources and conservative DEX
-          liquidity. If safe quorum is unavailable, publishing stops and the market fails closed:
-          borrowing and collateral withdrawals stop while repayment and collateral deposits remain
-          available.
-        </span>
-      </div>
-      <div className="field">
-        <label htmlFor="lltv">Liquidation LTV</label>
-        <select
-          id="lltv"
-          value={lltvBps}
-          onChange={(e) => {
-            setLltvBps(Number(e.target.value) as 3000 | 4000 | 5000 | 6000 | 6500);
-            resetReview();
-          }}
-        >
-          <option value={5000}>50% — conservative preset</option>
-          <option value={6000}>60% — standard preset</option>
-          <option value={6500}>65% — higher leverage</option>
-        </select>
-      </div>
-      <div className="field rate-builder">
-        <label htmlFor="rate-model">Borrowing rate terms</label>
-        <select
-          id="rate-model"
-          value={rateChoice}
-          onChange={(e) => {
-            setRateChoice(e.target.value as RateChoice);
-            setExtremeAcknowledged(false);
-            resetReview();
-          }}
-        >
-          <option value="borrowerFriendly">Borrower Friendly</option>
-          <option value="balanced">Balanced</option>
-          <option value="protectLenders">Protect Lenders</option>
-          <option value="advanced">Advanced — custom immutable curve</option>
-        </select>
-        <span className="help">
-          The creator chooses what borrowers pay. Lender returns are not guaranteed: they depend on
-          how much USDC is borrowed, fees, repayments, liquidity, and market losses. These terms
-          cannot be edited after launch.
-        </span>
-        {rateChoice === "advanced" ? (
-          <div className="rate-fields">
-            <label>
-              Starting borrow APR (%)
-              <input
-                inputMode="decimal"
-                value={startApr}
-                onChange={(e) => {
-                  setStartApr(e.target.value);
-                  setExtremeAcknowledged(false);
-                  resetReview();
-                }}
-              />
-            </label>
-            <label>
-              Target utilization (%)
-              <input
-                inputMode="decimal"
-                value={targetUtilization}
-                onChange={(e) => {
-                  setTargetUtilization(e.target.value);
-                  resetReview();
-                }}
-              />
-            </label>
-            <label>
-              Borrow APR at target (%)
-              <input
-                inputMode="decimal"
-                value={targetApr}
-                onChange={(e) => {
-                  setTargetApr(e.target.value);
-                  setExtremeAcknowledged(false);
-                  resetReview();
-                }}
-              />
-            </label>
-            <label>
-              Maximum borrow APR (%)
-              <input
-                inputMode="decimal"
-                value={maximumApr}
-                onChange={(e) => {
-                  setMaximumApr(e.target.value);
-                  setExtremeAcknowledged(false);
-                  resetReview();
-                }}
-              />
-            </label>
-            <label>
-              Increase above target
-              <select
-                value={rateShape}
-                onChange={(e) => {
-                  setRateShape(Number(e.target.value) as RateShape);
-                  resetReview();
-                }}
-              >
-                <option value={1}>Linear — rises steadily</option>
-                <option value={2}>Quadratic — gentle, then steep</option>
-                <option value={3}>Cubic — gentlest, then steepest</option>
-              </select>
-            </label>
+      {setupMode === "basic" ? (
+        <div className="basic-preset">
+          <div>
+            <span>Liquidation limit</span>
+            <strong>50% LLTV</strong>
           </div>
-        ) : null}
-        {!rateCurve ? (
-          <p className="unavailable">Enter a valid rate curve.</p>
-        ) : (
-          <>
-            {extreme ? (
-              <div className="risk-banner">
-                <strong>Experimental / high risk</strong>
-                <span>Very high borrowing cost.</span>
+          <div>
+            <span>Borrowing rates</span>
+            <strong>Balanced</strong>
+          </div>
+          <div>
+            <span>Total borrowing limit</span>
+            <strong>10,000 USDC</strong>
+          </div>
+          <div>
+            <span>Per-wallet limit</span>
+            <strong>1,000 USDC</strong>
+          </div>
+          <p>
+            These permanent settings favor a cautious first market. Choose Advanced if you need
+            different terms.
+          </p>
+        </div>
+      ) : null}
+      {setupMode === "advanced" ? (
+        <>
+          <div className="field">
+            <label htmlFor="lltv">Liquidation LTV</label>
+            <select
+              id="lltv"
+              value={lltvBps}
+              onChange={(e) => {
+                setLltvBps(Number(e.target.value) as 3000 | 4000 | 5000 | 6000 | 6500);
+                resetReview();
+              }}
+            >
+              <option value={5000}>50% — conservative preset</option>
+              <option value={6000}>60% — standard preset</option>
+              <option value={6500}>65% — higher leverage</option>
+            </select>
+          </div>
+          <div className="field rate-builder">
+            <label htmlFor="rate-model">Borrowing rate terms</label>
+            <select
+              id="rate-model"
+              value={rateChoice}
+              onChange={(e) => {
+                setRateChoice(e.target.value as RateChoice);
+                setExtremeAcknowledged(false);
+                resetReview();
+              }}
+            >
+              <option value="borrowerFriendly">Borrower Friendly</option>
+              <option value="balanced">Balanced</option>
+              <option value="protectLenders">Protect Lenders</option>
+              <option value="advanced">Advanced — custom immutable curve</option>
+            </select>
+            <span className="help">
+              The creator chooses what borrowers pay. Lender returns are not guaranteed: they depend
+              on how much USDC is borrowed, fees, repayments, liquidity, and market losses. These
+              terms cannot be edited after launch.
+            </span>
+            {rateChoice === "advanced" ? (
+              <div className="rate-fields">
+                <label>
+                  Starting borrow APR (%)
+                  <small>The yearly rate when almost none of the supplied USDC is borrowed.</small>
+                  <input
+                    inputMode="decimal"
+                    value={startApr}
+                    onChange={(e) => {
+                      setStartApr(e.target.value);
+                      setExtremeAcknowledged(false);
+                      resetReview();
+                    }}
+                  />
+                </label>
+                <label>
+                  Target utilization (%)
+                  <small>
+                    The point where the pool is considered busy—for example, 80 USDC used out of
+                    100.
+                  </small>
+                  <input
+                    inputMode="decimal"
+                    value={targetUtilization}
+                    onChange={(e) => {
+                      setTargetUtilization(e.target.value);
+                      resetReview();
+                    }}
+                  />
+                </label>
+                <label>
+                  Borrow APR at target (%)
+                  <small>What borrowers pay yearly when USDC usage reaches the target above.</small>
+                  <input
+                    inputMode="decimal"
+                    value={targetApr}
+                    onChange={(e) => {
+                      setTargetApr(e.target.value);
+                      setExtremeAcknowledged(false);
+                      resetReview();
+                    }}
+                  />
+                </label>
+                <label>
+                  Maximum borrow APR (%)
+                  <small>
+                    The highest yearly rate allowed when nearly all available USDC is borrowed.
+                  </small>
+                  <input
+                    inputMode="decimal"
+                    value={maximumApr}
+                    onChange={(e) => {
+                      setMaximumApr(e.target.value);
+                      setExtremeAcknowledged(false);
+                      resetReview();
+                    }}
+                  />
+                </label>
+                <label>
+                  Increase above target
+                  <small>
+                    How quickly borrowing becomes more expensive after the pool passes its target.
+                  </small>
+                  <select
+                    value={rateShape}
+                    onChange={(e) => {
+                      setRateShape(Number(e.target.value) as RateShape);
+                      resetReview();
+                    }}
+                  >
+                    <option value={1}>Linear — rises steadily</option>
+                    <option value={2}>Quadratic — gentle, then steep</option>
+                    <option value={3}>Cubic — gentlest, then steepest</option>
+                  </select>
+                </label>
               </div>
             ) : null}
-            {acknowledgmentRequired ? (
-              <label className="acknowledgment">
-                <input
-                  type="checkbox"
-                  checked={extremeAcknowledged}
-                  onChange={(e) => setExtremeAcknowledged(e.target.checked)}
-                />
-                I understand this market can charge borrowers more than 1,000% APR and may create
-                debt extremely quickly.
-              </label>
-            ) : null}
-            <div className="rate-preview">
-              <strong>Exact immutable curve preview</strong>
-              <table>
-                <thead>
-                  <tr>
-                    <th>USDC used</th>
-                    <th>Borrower APR</th>
-                    <th>Estimated lender APR</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ratePreview.map((row) => (
-                    <tr key={row.percent}>
-                      <td>{row.percent}%</td>
-                      <td>{aprLabel(row.borrow)}</td>
-                      <td>{aprLabel(row.lender)} variable</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <small>
-                Calculated with the exact integer formula used on-chain. Estimates are APR, not
-                compounded APY.
-              </small>
-            </div>
-            {extreme ? (
-              <div className="debt-preview">
-                <strong>If 100 USDC remained borrowed at the maximum APR</strong>
-                {[
-                  ["1 hour", 3600n],
-                  ["1 day", 86400n],
-                  ["30 days", 2592000n],
-                  ["1 year", 31536000n],
-                ].map(([label, seconds]) => (
-                  <span key={label.toString()}>
-                    {label.toString()}:{" "}
-                    {Number(
-                      projectSimpleAprDebt(100_000_000n, rateCurve.maxBorrowApr, seconds as bigint),
-                    ) / 1_000_000}{" "}
-                    USDC
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
+            {!rateCurve ? (
+              <p className="unavailable">Enter a valid rate curve.</p>
+            ) : (
+              <>
+                {extreme ? (
+                  <div className="risk-banner">
+                    <strong>Experimental / high risk</strong>
+                    <span>Very high borrowing cost.</span>
+                  </div>
+                ) : null}
+                {acknowledgmentRequired ? (
+                  <label className="acknowledgment">
+                    <input
+                      type="checkbox"
+                      checked={extremeAcknowledged}
+                      onChange={(e) => setExtremeAcknowledged(e.target.checked)}
+                    />
+                    I understand this market can charge borrowers more than 1,000% APR and may
+                    create debt extremely quickly.
+                  </label>
+                ) : null}
+                <div className="rate-preview">
+                  <strong>Exact immutable curve preview</strong>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>USDC used</th>
+                        <th>Borrower APR</th>
+                        <th>Estimated lender APR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ratePreview.map((row) => (
+                        <tr key={row.percent}>
+                          <td>{row.percent}%</td>
+                          <td>{aprLabel(row.borrow)}</td>
+                          <td>{aprLabel(row.lender)} variable</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <small>
+                    Calculated with the exact integer formula used on-chain. Estimates are APR, not
+                    compounded APY.
+                  </small>
+                </div>
+                {extreme ? (
+                  <div className="debt-preview">
+                    <strong>If 100 USDC remained borrowed at the maximum APR</strong>
+                    {[
+                      ["1 hour", 3600n],
+                      ["1 day", 86400n],
+                      ["30 days", 2592000n],
+                      ["1 year", 31536000n],
+                    ].map(([label, seconds]) => (
+                      <span key={label.toString()}>
+                        {label.toString()}:{" "}
+                        {Number(
+                          projectSimpleAprDebt(
+                            100_000_000n,
+                            rateCurve.maxBorrowApr,
+                            seconds as bigint,
+                          ),
+                        ) / 1_000_000}{" "}
+                        USDC
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </>
+      ) : null}
       <div className="field creator-economics">
         <span className="field-label">Who receives borrower interest</span>
         <div>
@@ -405,38 +468,42 @@ export function CreateMarketForm() {
           and still incur interest, fees, and transaction costs.
         </span>
       </div>
-      <div className="field">
-        <label htmlFor="market-cap">Market borrow cap (USDC)</label>
-        <input
-          id="market-cap"
-          inputMode="decimal"
-          value={marketCap}
-          onChange={(e) => {
-            setMarketCap(e.target.value);
-            resetReview();
-          }}
-        />
-        <span className="help">
-          Permanent ceiling on total outstanding USDC debt in this isolated market. This limits
-          aggregate exposure; it is not the amount of liquidity supplied.
-        </span>
-      </div>
-      <div className="field">
-        <label htmlFor="wallet-cap">Wallet borrow cap (USDC)</label>
-        <input
-          id="wallet-cap"
-          inputMode="decimal"
-          value={walletCap}
-          onChange={(e) => {
-            setWalletCap(e.target.value);
-            resetReview();
-          }}
-        />
-        <span className="help">
-          Permanent maximum USDC debt for one wallet. It must not exceed the market cap and does not
-          prevent one person from using multiple wallets.
-        </span>
-      </div>
+      {setupMode === "advanced" ? (
+        <>
+          <div className="field">
+            <label htmlFor="market-cap">Market borrow cap (USDC)</label>
+            <input
+              id="market-cap"
+              inputMode="decimal"
+              value={marketCap}
+              onChange={(e) => {
+                setMarketCap(e.target.value);
+                resetReview();
+              }}
+            />
+            <span className="help">
+              Permanent ceiling on total outstanding USDC debt in this isolated market. This limits
+              aggregate exposure; it is not the amount of liquidity supplied.
+            </span>
+          </div>
+          <div className="field">
+            <label htmlFor="wallet-cap">Wallet borrow cap (USDC)</label>
+            <input
+              id="wallet-cap"
+              inputMode="decimal"
+              value={walletCap}
+              onChange={(e) => {
+                setWalletCap(e.target.value);
+                resetReview();
+              }}
+            />
+            <span className="help">
+              Permanent maximum USDC debt for one wallet. It must not exceed the market cap and does
+              not prevent one person from using multiple wallets.
+            </span>
+          </div>
+        </>
+      ) : null}
       <div className="field">
         <label htmlFor="initial-liquidity">Initial USDC liquidity</label>
         <input
@@ -470,8 +537,8 @@ export function CreateMarketForm() {
           status === "confirming" ||
           status === "seeding" ||
           status === "confirmed" ||
-          !rateCurve ||
-          (acknowledgmentRequired && !extremeAcknowledged)
+          (setupMode === "advanced" && !rateCurve) ||
+          (setupMode === "advanced" && acknowledgmentRequired && !extremeAcknowledged)
         }
         onClick={launch}
       >

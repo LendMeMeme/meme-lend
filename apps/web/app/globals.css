@@ -649,6 +649,69 @@ tbody tr:hover {
   gap: 8px;
   margin-bottom: 19px;
 }
+.setup-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 20px 0 26px;
+}
+.setup-choice button {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  text-align: left;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.setup-choice button span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.setup-choice button.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.basic-preset {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin-bottom: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--line);
+}
+.basic-preset > div {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  background: var(--surface-soft);
+}
+.basic-preset span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.basic-preset p {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rate-fields label small {
+  display: block;
+  margin: 6px 0 9px;
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.45;
+}
 .asset-pair {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -1150,6 +1213,13 @@ tbody tr:hover {
   }
   .market-action-card {
     padding: 24px 18px;
+  }
+  .setup-choice,
+  .basic-preset {
+    grid-template-columns: 1fr;
+  }
+  .basic-preset p {
+    grid-column: auto;
   }
   .transaction-steps {
     grid-template-columns: 1fr;
