@@ -69,7 +69,7 @@ export default async function MarketPage({ params }: Props) {
           </div>
           <p className="muted">Each action uses this market only.</p>
         </div>
-        <MarketActions market={m.address} />
+        <MarketActions market={m.address} collateralSymbol={m.collateralSymbol} />
       </section>
       <div className="grid section">
         <section className="card panel span-7">

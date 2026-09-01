@@ -710,6 +710,8 @@ tbody tr:hover {
   gap: 5px;
   padding: 18px 24px;
   background: var(--green-soft);
+  text-align: center;
+  justify-items: center;
 }
 .benefit-strip strong { color: var(--green-strong); }
 .benefit-strip span { color: var(--muted); font-size: 13px; line-height: 1.45; }
@@ -721,6 +723,7 @@ tbody tr:hover {
 .position-facts span { color: var(--muted); font-size: 12px; }
 .position-facts strong { font-size: 18px; }
 .position-card .button { justify-self: start; }
+.calculated-value { display: block; font-size: 22px; margin: 2px 0 4px; }
 .market-action-menu {
   padding: 26px 18px;
   border-right: 1px solid var(--line);

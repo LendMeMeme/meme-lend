@@ -1,6 +1,9 @@
 import {
   decodePinocchioGlobalConfig,
   decodePinocchioMarket,
+  decodePinocchioBorrowerPosition,
+  decodePinocchioOracleConfiguration,
+  decodePinocchioOracleObservation,
   encodeCreatePinocchioMarket,
   associatedTokenAddress,
   associatedTokenAddressWithBump,
@@ -48,6 +51,34 @@ function parseUnits(value: string, decimals: number): bigint {
     BigInt((fraction + "0".repeat(decimals)).slice(0, decimals) || "0");
   if (result <= 0n) throw new Error("Amount is too small");
   return result;
+}
+
+const divideUp = (numerator: bigint, denominator: bigint) =>
+  numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator;
+
+const formatUnits = (value: bigint, decimals: number) => {
+  const base = 10n ** BigInt(decimals),
+    whole = value / base,
+    fraction = (value % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+};
+
+export function requiredCollateralDeposit(input: {
+  resultingDebt: bigint;
+  existingCollateral: bigint;
+  collateralDecimals: number;
+  price: bigint;
+  priceDecimals: number;
+  targetLtvBps: number;
+}) {
+  const requiredTotal = divideUp(
+    input.resultingDebt * 10_000n * 10n ** BigInt(input.collateralDecimals) *
+      10n ** BigInt(input.priceDecimals),
+    input.price * BigInt(input.targetLtvBps),
+  );
+  return requiredTotal > input.existingCollateral
+    ? requiredTotal - input.existingCollateral
+    : 0n;
 }
 
 async function data(connection: Connection, key: PublicKey): Promise<Uint8Array> {
@@ -398,21 +429,92 @@ export async function buildBorrowWithCollateralTransaction(input: {
   owner: PublicKey;
   connection: Connection;
 }) {
-  const [deposit, borrow] = await Promise.all([
-    buildMarketTransaction({
-      action: "Deposit collateral",
-      amount: input.collateralAmount,
-      market: input.market,
-      owner: input.owner,
-      connection: input.connection,
-    }),
-    buildMarketTransaction({
+  const borrow = await buildMarketTransaction({
       action: "Borrow",
       amount: input.borrowAmount,
       market: input.market,
       owner: input.owner,
       connection: input.connection,
-    }),
-  ]);
+    });
+  if (Number(input.collateralAmount) === 0) return borrow;
+  const deposit = await buildMarketTransaction({
+    action: "Deposit collateral",
+    amount: input.collateralAmount,
+    market: input.market,
+    owner: input.owner,
+    connection: input.connection,
+  });
   return new Transaction().add(...deposit.instructions, ...borrow.instructions);
+}
+
+export async function calculateBorrowCollateral(input: {
+  borrowAmount: string;
+  market: string;
+  owner: PublicKey;
+  connection: Connection;
+}) {
+  const programId = id(),
+    marketKey = new PublicKey(input.market),
+    marketInfo = await input.connection.getAccountInfo(marketKey, "confirmed");
+  if (!marketInfo || !marketInfo.owner.equals(programId)) throw new Error("Market is unavailable");
+  const market = decodePinocchioMarket(marketInfo.data);
+  const loanProgram = market.loanToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+  const loanDecimals = await getMintDecimals(input.connection, market.loanMint, loanProgram);
+  const requestedDebt = parseUnits(input.borrowAmount, loanDecimals);
+  const [oracleConfigKey] = pinocchioPdas.oracleConfig(marketKey, programId),
+    [observationKey] = pinocchioPdas.oracleObservation(marketKey, programId),
+    [positionKey] = pinocchioPdas.borrowerPosition(marketKey, input.owner, programId);
+  const [oracleInfo, observationInfo, positionInfo, collateralMintInfo] =
+    await input.connection.getMultipleAccountsInfo(
+      [oracleConfigKey, observationKey, positionKey, market.collateralMint],
+      "confirmed",
+    );
+  if (!oracleInfo || !oracleInfo.owner.equals(programId))
+    throw new Error("This market has no valid oracle configuration");
+  if (!observationInfo || !observationInfo.owner.equals(programId))
+    throw new Error("Borrowing is not available yet because the oracle has not published a price");
+  if (!collateralMintInfo) throw new Error("Collateral mint is unavailable");
+  const oracle = decodePinocchioOracleConfiguration(oracleInfo.data),
+    observation = decodePinocchioOracleObservation(observationInfo.data),
+    now = BigInt(Math.floor(Date.now() / 1000));
+  if (
+    observation.price === 0n ||
+    observation.publisher.equals(PublicKey.default) ||
+    !observation.market.equals(marketKey) ||
+    observation.confidenceBps > oracle.maxConfidenceBps ||
+    observation.deviationBps > oracle.maxDeviationBps ||
+    observation.maxRecoverableUsdc === 0n ||
+    observation.publishedAt > now ||
+    now - observation.publishedAt > BigInt(oracle.maxAgeSeconds)
+  )
+    throw new Error("Borrowing is paused because the oracle price is not fresh");
+  const position = positionInfo?.owner.equals(programId)
+    ? decodePinocchioBorrowerPosition(positionInfo.data)
+    : null;
+  const existingDebt = divideUp(
+    (position?.borrowShares ?? 0n) * market.borrowIndex,
+    1_000_000_000_000_000_000n,
+  );
+  const resultingDebt = existingDebt + requestedDebt;
+  if (resultingDebt > market.walletBorrowCap || resultingDebt > market.marketBorrowCap)
+    throw new Error("That amount exceeds this market's permanent borrowing cap");
+  if (resultingDebt > observation.maxRecoverableUsdc)
+    throw new Error("That amount exceeds the oracle's safe liquidity limit");
+  const collateralDecimals = collateralMintInfo.data[44];
+  if (collateralDecimals === undefined) throw new Error("Collateral mint data is invalid");
+  const targetLtvBps = Math.max(1, Math.floor((market.lltvBps * 8_000) / 10_000)),
+    existingCollateral = position?.collateralAmount ?? 0n,
+    additionalCollateral = requiredCollateralDeposit({
+      resultingDebt,
+      existingCollateral,
+      collateralDecimals,
+      price: observation.price,
+      priceDecimals: oracle.priceDecimals,
+      targetLtvBps,
+    });
+  return {
+    collateralAmount: formatUnits(additionalCollateral, collateralDecimals),
+    collateralDecimals,
+    targetLtvBps,
+  };
 }

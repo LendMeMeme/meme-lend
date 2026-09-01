@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import {
   buildBorrowWithCollateralTransaction,
+  calculateBorrowCollateral,
   buildMarketTransaction,
   type MarketAction,
 } from "@/lib/transactions";
@@ -12,16 +13,19 @@ export function TransactionPanel({
   action,
   market,
   risk,
+  collateralSymbol,
 }: {
   action: Action;
   market?: string;
   risk: string;
+  collateralSymbol?: string | null;
 }) {
   const wallet = useWallet();
   const { connected, publicKey, sendTransaction } = wallet;
   const { connection } = useConnection();
   const [amount, setAmount] = useState("");
   const [collateralAmount, setCollateralAmount] = useState("");
+  const [collateralQuote, setCollateralQuote] = useState("");
   const [marketInput, setMarketInput] = useState("");
   const [borrower, setBorrower] = useState("");
   const [status, setStatus] = useState<
@@ -32,19 +36,60 @@ export function TransactionPanel({
   const valid =
     Number.isFinite(Number(amount)) &&
     Number(amount) > 0 &&
-    (action !== "Borrow" ||
-      (Number.isFinite(Number(collateralAmount)) && Number(collateralAmount) > 0)) &&
     (action !== "Withdraw" || /^\d+$/.test(amount));
   const selectedMarket = market ?? marketInput;
+  useEffect(() => {
+    if (action !== "Borrow" || !publicKey || !selectedMarket || !valid) {
+      setCollateralAmount("");
+      setCollateralQuote("");
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void calculateBorrowCollateral({
+        borrowAmount: amount,
+        market: selectedMarket,
+        owner: publicKey,
+        connection,
+      })
+        .then((quote) => {
+          if (!cancelled) {
+            setCollateralAmount(quote.collateralAmount);
+            setCollateralQuote(
+              `Calculated from the live oracle with a safety target below the ${quote.targetLtvBps / 100}% loan-to-value level.`,
+            );
+          }
+        })
+        .catch((cause) => {
+          if (!cancelled) {
+            setCollateralAmount("");
+            setCollateralQuote(cause instanceof Error ? cause.message : "Collateral unavailable");
+          }
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [action, amount, connection, publicKey, selectedMarket, valid]);
   const submit = async () => {
     if (!connected || !publicKey || !selectedMarket || !valid) return;
     setStatus("checking");
     setMessage("");
     try {
+      const automaticCollateral =
+        action === "Borrow"
+          ? await calculateBorrowCollateral({
+              borrowAmount: amount,
+              market: selectedMarket,
+              owner: publicKey,
+              connection,
+            })
+          : null;
       const transaction =
         action === "Borrow"
           ? await buildBorrowWithCollateralTransaction({
-              collateralAmount,
+              collateralAmount: automaticCollateral!.collateralAmount,
               borrowAmount: amount,
               market: selectedMarket,
               owner: publicKey,
@@ -106,20 +151,15 @@ export function TransactionPanel({
       </div>
       {action === "Borrow" ? (
         <div className="field">
-          <label htmlFor="borrow-collateral">Memecoin collateral you will deposit</label>
-          <input
-            id="borrow-collateral"
-            inputMode="decimal"
-            value={collateralAmount}
-            onChange={(event) => {
-              setCollateralAmount(event.target.value);
-              setStatus("idle");
-            }}
-            placeholder="0.00"
-          />
+          <span className="field-label">Collateral added automatically</span>
+          <strong className="calculated-value">
+            {collateralAmount
+              ? `${collateralAmount} ${collateralSymbol ?? "memecoin"}`
+              : "Enter a USDC amount above"}
+          </strong>
           <span className="help">
-            One wallet approval deposits this collateral and borrows your USDC together. The
-            transaction stops safely if the collateral is not enough.
+            {collateralQuote ||
+              "The app uses the fresh on-chain oracle price and adds a safety buffer automatically."}
           </span>
         </div>
       ) : null}
@@ -176,7 +216,8 @@ export function TransactionPanel({
           !selectedMarket ||
           status === "checking" ||
           status === "sending" ||
-          status === "confirming"
+          status === "confirming" ||
+          (action === "Borrow" && !collateralAmount)
         }
         onClick={submit}
       >

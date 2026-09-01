@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@/components/wallet-context";
 import type { Connection } from "@solana/web3.js";
 import { buildCreateMarketTransaction, type RATE_MODELS } from "@/lib/transactions";
@@ -24,6 +25,7 @@ async function errorMessage(error: unknown, connection: Connection) {
 }
 
 export function CreateMarketForm() {
+  const router = useRouter();
   const wallet = useWallet();
   const { connection } = useConnection();
   const [collateralMint, setCollateralMint] = useState("");
@@ -100,6 +102,7 @@ export function CreateMarketForm() {
         `Market ${result.market.toBase58()} launched in ${signature} and funded with ${initialLiquidity} USDC in ${liquiditySignature}`,
       );
       setStatus("confirmed");
+      router.push(`/markets/${result.market.toBase58()}`);
     } catch (error) {
       const detail = await errorMessage(error, connection);
       setMessage(

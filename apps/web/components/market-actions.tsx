@@ -54,7 +54,13 @@ const borrowerActions: ActionOption[] = [
   },
 ];
 
-export function MarketActions({ market }: { market: string }) {
+export function MarketActions({
+  market,
+  collateralSymbol,
+}: {
+  market: string;
+  collateralSymbol?: string | null;
+}) {
   const [mode, setMode] = useState<"lend" | "borrow">("lend");
   const [selected, setSelected] = useState<MarketAction>("Supply");
   const actions = mode === "lend" ? lenderActions : borrowerActions;
@@ -138,7 +144,12 @@ export function MarketActions({ market }: { market: string }) {
               <p>{active.description}</p>
             </div>
           </div>
-          <TransactionPanel action={active.action} market={market} risk={active.risk} />
+          <TransactionPanel
+            action={active.action}
+            market={market}
+            risk={active.risk}
+            collateralSymbol={collateralSymbol}
+          />
         </div>
       </div>
     </section>
