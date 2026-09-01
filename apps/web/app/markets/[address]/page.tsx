@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getMarket } from "@/lib/data";
 import { MarketActions } from "@/components/market-actions";
@@ -19,8 +20,20 @@ export default async function MarketPage({ params }: Props) {
     return (
       <main className="shell section">
         <div className="card empty">
-          <h2>Market data unavailable</h2>
-          <p className="unavailable">{result.reason}</p>
+          {result.reason === "Indexer returned 404" ? (
+            <>
+              <h2>Your market is being added</h2>
+              <p>New markets usually take around 30 seconds to appear.</p>
+              <Link className="button primary" href="/markets">
+                Go to Markets
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2>Market data unavailable</h2>
+              <p className="unavailable">{result.reason}</p>
+            </>
+          )}
         </div>
       </main>
     );
