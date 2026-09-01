@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getMarket } from "@/lib/data";
 import { MarketActions } from "@/components/market-actions";
 import { formatApr, formatPeriodEstimate } from "@/lib/rates";
+import { borrowingInactiveReason } from "@/lib/market-discovery";
 type Props = { params: Promise<{ address: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
@@ -44,12 +45,19 @@ export default async function MarketPage({ params }: Props) {
   const marketTitle = m.marketName ?? m.collateralName ?? `${tokenLabel} market`;
   const usdc = (raw: string) => `${Number(raw) / 1_000_000} USDC`;
   const totalUsdc = (BigInt(m.availableUsdc) + BigInt(m.borrowedUsdc)).toString();
+  const inactiveReason = borrowingInactiveReason(m);
   return (
     <main className="shell">
       <header className="page-head">
         <div className="eyebrow">Market overview</div>
         <h1>{marketTitle}</h1>
         <p className="market-pair">{tokenLabel} / USDC</p>
+        {inactiveReason ? (
+          <div className="notice critical">
+            <strong>Inactive for new borrowing</strong>
+            <span>{inactiveReason}</span>
+          </div>
+        ) : null}
         <p className="lede">
           Every value below belongs only to this market. Status is discovery metadata, not a safety
           guarantee.
@@ -121,6 +129,7 @@ export default async function MarketPage({ params }: Props) {
           collateralSymbol={m.collateralSymbol}
           supplyAprBps={m.supplyAprBps}
           borrowAprBps={m.borrowAprBps}
+          borrowingDisabledReason={inactiveReason}
         />
       </section>
       <div className="grid section">

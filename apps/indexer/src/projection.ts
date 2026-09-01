@@ -14,6 +14,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { classifyMarket } from "./classification.js";
 import { tokenMetadata } from "./metadata.js";
 import { marketTags } from "./tags.js";
+import { pumpLifecycle } from "./pump-status.js";
 
 const TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const TOKEN_2022 = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
@@ -69,7 +70,10 @@ export async function refreshMarket(
   const utilization = cash + debt === 0n ? 0n : (debt * RATE_SCALE) / (cash + debt);
   const utilizationBps = Number((utilization * 10_000n) / RATE_SCALE);
   const rates = annualRates(market, utilization);
-  const metadata = await tokenMetadata(connection, market.collateralMint);
+  const [metadata, collateralLifecycle] = await Promise.all([
+    tokenMetadata(connection, market.collateralMint),
+    pumpLifecycle(connection, market.collateralMint),
+  ]);
   const firstEvent = await database
     .transactions()
     .find({ market: marketAddress, event: "MarketCreated" })
@@ -119,6 +123,7 @@ export async function refreshMarket(
     collateralMint: market.collateralMint.toBase58(),
     collateralName: metadata.name,
     collateralSymbol: metadata.symbol,
+    collateralLifecycle,
     loanMint: market.loanMint.toBase58(),
     creator: market.creator.toBase58(),
     status: classification.status,

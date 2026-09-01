@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MarketView } from "@meme-lend/shared";
 import {
+  borrowingInactiveReason,
   currentRateRisk,
   hasActiveBorrowing,
   homepageSections,
@@ -45,6 +46,18 @@ describe("market discovery", () => {
   it("uses real debt and current rates", () => {
     expect(hasActiveBorrowing(market("1", "1", "1"))).toBe(true);
     expect(currentRateRisk(market("1", "1", "0", 100_001))).toBe("extreme");
+  });
+  it("marks only over-50% pre-bond Pump markets inactive", () => {
+    const preBond = { ...market("1", "1"), collateralLifecycle: "pump-prebond" as const };
+    expect(borrowingInactiveReason(preBond)).toBeNull();
+    expect(borrowingInactiveReason({ ...preBond, lltvBps: 6000 })).toContain("Inactive");
+    expect(
+      borrowingInactiveReason({
+        ...preBond,
+        lltvBps: 6500,
+        collateralLifecycle: "pump-graduated",
+      }),
+    ).toBeNull();
   });
   it("sorts stably and removes homepage duplicates", () => {
     const values = [market("1", "10"), market("2", "30", "2"), market("3", "20")];

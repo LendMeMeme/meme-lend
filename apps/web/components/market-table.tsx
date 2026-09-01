@@ -6,6 +6,7 @@ import type { MarketView } from "@meme-lend/shared";
 import { formatApr, formatPeriodEstimate } from "@/lib/rates";
 import {
   hasActiveBorrowing,
+  borrowingInactiveReason,
   liquidityTier,
   sortMarkets,
   type MarketSort,
@@ -74,13 +75,15 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
             {visible.map((market) => {
               const label = identity(market);
               const tier = liquidityTier(market);
+              const inactiveReason = borrowingInactiveReason(market);
               return (
-                <tr key={market.address}>
+                <tr key={market.address} className={inactiveReason ? "market-inactive" : undefined}>
                   <td>
                     <Link href={`/markets/${market.address}`}>
                       <strong>{label.name}</strong>
                       <small>{label.pair}</small>
                     </Link>
+                    {inactiveReason ? <span className="badge tag-critical">Inactive</span> : null}
                   </td>
                   <td>
                     <strong>{formatApr(market.supplyAprBps)}</strong>
@@ -101,8 +104,12 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                     </small>
                   </td>
                   <td>
-                    <Link className="button table-action" href={`/markets/${market.address}`}>
-                      View market
+                    <Link
+                      className="button table-action"
+                      href={`/markets/${market.address}`}
+                      title={inactiveReason ?? undefined}
+                    >
+                      {inactiveReason ? "View reason" : "View market"}
                     </Link>
                   </td>
                 </tr>

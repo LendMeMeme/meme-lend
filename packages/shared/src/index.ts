@@ -20,6 +20,7 @@ export interface MarketView {
   collateralMint: string;
   collateralName: string | null;
   collateralSymbol: string | null;
+  collateralLifecycle?: "pump-prebond" | "pump-graduated" | "other" | "unknown";
   loanMint: string;
   creator: string;
   status: MarketStatus;

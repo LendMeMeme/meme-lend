@@ -59,11 +59,13 @@ export function MarketActions({
   collateralSymbol,
   supplyAprBps,
   borrowAprBps,
+  borrowingDisabledReason,
 }: {
   market: string;
   collateralSymbol?: string | null;
   supplyAprBps?: number | null;
   borrowAprBps?: number | null;
+  borrowingDisabledReason?: string | null;
 }) {
   const [mode, setMode] = useState<"lend" | "borrow">("lend");
   const [selected, setSelected] = useState<MarketAction>("Supply");
@@ -129,6 +131,7 @@ export function MarketActions({
               key={item.action}
               className={active.action === item.action ? "active" : ""}
               onClick={() => setSelected(item.action)}
+              disabled={item.action === "Borrow" && Boolean(borrowingDisabledReason)}
             >
               <item.icon aria-hidden="true" size={18} />
               <span>
@@ -148,19 +151,23 @@ export function MarketActions({
               <p>{active.description}</p>
             </div>
           </div>
-          <TransactionPanel
-            action={active.action}
-            market={market}
-            risk={active.risk}
-            collateralSymbol={collateralSymbol}
-            aprBps={
-              active.action === "Supply"
-                ? supplyAprBps
-                : active.action === "Borrow"
-                  ? borrowAprBps
-                  : null
-            }
-          />
+          {active.action === "Borrow" && borrowingDisabledReason ? (
+            <p className="notice critical">{borrowingDisabledReason}</p>
+          ) : (
+            <TransactionPanel
+              action={active.action}
+              market={market}
+              risk={active.risk}
+              collateralSymbol={collateralSymbol}
+              aprBps={
+                active.action === "Supply"
+                  ? supplyAprBps
+                  : active.action === "Borrow"
+                    ? borrowAprBps
+                    : null
+              }
+            />
+          )}
         </div>
       </div>
     </section>

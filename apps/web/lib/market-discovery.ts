@@ -12,6 +12,10 @@ export function liquidityTier(market: MarketView): LiquidityTier {
 }
 
 export const hasActiveBorrowing = (market: MarketView) => atomic(market.borrowedUsdc) > 0n;
+export const borrowingInactiveReason = (market: MarketView): string | null =>
+  market.collateralLifecycle === "pump-prebond" && market.lltvBps > 5_000
+    ? `Inactive: this pre-bond Pump.fun token requires a liquidation limit of 50% or lower. This market's immutable limit is ${market.lltvBps / 100}%.`
+    : null;
 export const isRecentlyCreated = (market: MarketView, now = Date.now()) => {
   if (!market.createdAt) return false;
   const created = Date.parse(market.createdAt);
