@@ -20,10 +20,10 @@ export const viewport: Viewport = {
 };
 const links = [
   ["Markets", "/markets"],
-  ["Strategies", "/strategies"],
   ["My dashboard", "/positions"],
   ["Create a market", "/create-market"],
   ["Docs", "/docs"],
+  ["Strategies", "/strategies"],
 ];
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
