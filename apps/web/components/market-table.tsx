@@ -23,7 +23,6 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
             <th>Cost to borrow</th>
             <th>Liquidity</th>
             <th>Liquidation limit</th>
-            <th>Things to know</th>
             <th></th>
           </tr>
         </thead>
@@ -57,15 +56,6 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
               <td>
                 <strong>{m.lltvBps / 100}% LLTV</strong>
                 <small>Borrowers may be liquidated above this level</small>
-              </td>
-              <td>
-                <div className="tag-list compact">
-                  {(m.tags ?? []).slice(0, 3).map((tag) => (
-                    <span className={`badge tag-${tag.tone}`} title={tag.detail} key={tag.code}>
-                      {tag.label}
-                    </span>
-                  ))}
-                </div>
               </td>
               <td>
                 <Link className="button table-action" href={`/markets/${m.address}`}>
