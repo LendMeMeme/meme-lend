@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveRefreshLead,
+  oraclePublicationTimestamp,
   oraclePriceDeviationBps,
   publishingPriority,
   shouldStartOracleRefresh,
 } from "./publisher.js";
 
 describe("two-publisher refresh scheduling", () => {
+  it("uses Solana time and never moves a pending round backward", () => {
+    expect(oraclePublicationTimestamp(1_000)).toBe(1_000);
+    expect(oraclePublicationTimestamp(1_000, 1_001n)).toBe(1_001);
+    expect(() => oraclePublicationTimestamp(0)).toThrow("invalid block timestamp");
+  });
+
   it("keeps a confirmed observation usable for most of its valid lifetime", () => {
     expect(shouldStartOracleRefresh(10, 60, 20)).toBe(false);
     expect(shouldStartOracleRefresh(39, 60, 20)).toBe(false);

@@ -25,6 +25,16 @@ const readonly = (pubkey: PublicKey) => ({ pubkey, isSigner: false, isWritable: 
 
 export type PublishOutcome = { market: string; signature: string; sources: string[] };
 
+export function oraclePublicationTimestamp(
+  chainTimestamp: number,
+  previousPublishedAt?: bigint,
+): number {
+  if (!Number.isSafeInteger(chainTimestamp) || chainTimestamp <= 0)
+    throw new Error("Solana returned an invalid block timestamp");
+  const previous = previousPublishedAt === undefined ? 0 : Number(previousPublishedAt);
+  return Math.max(chainTimestamp, previous);
+}
+
 type MarketAccount = { pubkey: PublicKey; account: { data: Buffer } };
 
 export function publishingPriority(input: {
@@ -210,7 +220,14 @@ export async function publishMarket(
   prior = latestObservationInfo
     ? decodePinocchioOracleObservation(latestObservationInfo.data)
     : null;
-  const submitNow = Math.floor(Date.now() / 1000);
+  const confirmedSlot = await connection.getSlot("confirmed");
+  const chainTimestamp = await connection.getBlockTime(confirmedSlot);
+  if (chainTimestamp === null)
+    throw new Error("Solana block time is temporarily unavailable; publication will retry");
+  // The program compares this value with Solana's Clock sysvar. Using the
+  // publisher host clock can put an observation a few seconds in the future
+  // and make an otherwise valid confirmation fail with InvalidArgument.
+  const submitNow = oraclePublicationTimestamp(chainTimestamp, prior?.publishedAt);
   const latestStale =
     prior !== null &&
     (prior.publishedAt > BigInt(submitNow) ||

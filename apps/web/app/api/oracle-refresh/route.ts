@@ -11,6 +11,12 @@ const recentResults = new Map<
 >();
 const COOLDOWN_MS = 10_000;
 
+function concisePublisherError(message: string): string {
+  if (/invalid program argument|InstructionError.*InvalidArgument/i.test(message))
+    return "The oracle confirmation was rejected by Solana and will retry automatically";
+  return message.split("\n")[0]!.slice(0, 240);
+}
+
 export async function POST(request: NextRequest) {
   let market: string;
   try {
@@ -60,9 +66,14 @@ export async function POST(request: NextRequest) {
         };
         accepted ||= result.status === 202;
         published ||= body.published === true;
-        if (!result.ok && typeof body.error === "string") errors.add(body.error);
+        if (!result.ok && typeof body.error === "string")
+          errors.add(concisePublisherError(body.error));
       } catch (cause) {
-        errors.add(cause instanceof Error ? cause.message : "Publisher request failed");
+        errors.add(
+          concisePublisherError(
+            cause instanceof Error ? cause.message : "Publisher request failed",
+          ),
+        );
       }
     }
   }
