@@ -17,12 +17,71 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import type { PublisherConfig } from "./config.js";
-import { aggregatePrice } from "./pricing.js";
+import { aggregatePrice, type PriceResult } from "./pricing.js";
 
 const writable = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
 const readonly = (pubkey: PublicKey) => ({ pubkey, isSigner: false, isWritable: false });
 
 export type PublishOutcome = { market: string; signature: string; sources: string[] };
+
+type MarketAccount = { pubkey: PublicKey; account: { data: Buffer } };
+
+export function publishingPriority(input: {
+  sourceIndex: number;
+  hasObservation: boolean;
+  pendingConfirmation: boolean;
+  stale: boolean;
+}): number {
+  if (!input.hasObservation || input.stale) return input.sourceIndex === 0 ? 0 : 3;
+  if (input.pendingConfirmation) return input.sourceIndex === 1 ? 0 : 3;
+  return input.sourceIndex === 0 ? 1 : 3;
+}
+
+async function prioritizedAccounts(
+  connection: Connection,
+  signer: Keypair,
+  config: PublisherConfig,
+  accounts: readonly MarketAccount[],
+): Promise<MarketAccount[]> {
+  const keys = accounts.flatMap(({ pubkey }) => {
+    const [oracle] = pinocchioPdas.oracleConfig(pubkey, config.programId);
+    const [observation] = pinocchioPdas.oracleObservation(pubkey, config.programId);
+    return [oracle, observation];
+  });
+  const infos = await connection.getMultipleAccountsInfo(keys, "confirmed");
+  const now = Math.floor(Date.now() / 1000);
+  return accounts
+    .map((account, index) => {
+      try {
+        const oracleInfo = infos[index * 2],
+          observationInfo = infos[index * 2 + 1];
+        if (!oracleInfo) return { account, priority: 4 };
+        const oracle = decodePinocchioOracleConfiguration(oracleInfo.data);
+        const sourceIndex = oracle.sources.findIndex((source) => source.equals(signer.publicKey));
+        if (sourceIndex < 0) return { account, priority: 4 };
+        const prior = observationInfo
+          ? decodePinocchioOracleObservation(observationInfo.data)
+          : null;
+        const stale =
+          prior !== null &&
+          (prior.publishedAt > BigInt(now) ||
+            BigInt(now) - prior.publishedAt > BigInt(oracle.maxAgeSeconds));
+        return {
+          account,
+          priority: publishingPriority({
+            sourceIndex,
+            hasObservation: prior !== null,
+            pendingConfirmation: prior?.publisher.equals(PublicKey.default) ?? false,
+            stale,
+          }),
+        };
+      } catch {
+        return { account, priority: 4 };
+      }
+    })
+    .sort((left, right) => left.priority - right.priority)
+    .map(({ account }) => account);
+}
 
 export async function publishAll(
   connection: Connection,
@@ -37,9 +96,11 @@ export async function publishAll(
     commitment: "confirmed",
     filters: [{ dataSize: PINOCCHIO_MARKET_LEN }],
   });
+  const ordered = await prioritizedAccounts(connection, signer, config, accounts);
   const published: PublishOutcome[] = [];
   const failures: Array<{ market: string; error: string }> = [];
-  for (const account of accounts) {
+  const priceCache = new Map<string, Promise<PriceResult>>();
+  for (const account of ordered) {
     try {
       const outcome = await publishMarket(
         connection,
@@ -47,6 +108,7 @@ export async function publishAll(
         config,
         account.pubkey,
         account.account.data,
+        priceCache,
       );
       if (outcome) published.push(outcome);
     } catch (error) {
@@ -65,6 +127,7 @@ export async function publishMarket(
   config: PublisherConfig,
   marketKey: PublicKey,
   marketData?: Uint8Array,
+  priceCache = new Map<string, Promise<PriceResult>>(),
 ): Promise<PublishOutcome | null> {
   const info = marketData ?? (await connection.getAccountInfo(marketKey, "confirmed"))?.data;
   if (!info) throw new Error("Market account is unavailable");
@@ -101,12 +164,18 @@ export async function publishMarket(
       ? oracle.sources[1]
       : oracle.sources[0];
   if (!expectedPublisher?.equals(signer.publicKey)) return null;
-  const result = await aggregatePrice(
-    connection,
-    market.collateralMint.toBase58(),
-    config,
-    market.lltvBps,
-  );
+  const cacheKey = `${market.collateralMint.toBase58()}:${market.lltvBps}`;
+  let pricePromise = priceCache.get(cacheKey);
+  if (!pricePromise) {
+    pricePromise = aggregatePrice(
+      connection,
+      market.collateralMint.toBase58(),
+      config,
+      market.lltvBps,
+    );
+    priceCache.set(cacheKey, pricePromise);
+  }
+  const result = await pricePromise;
   if (result.confidenceBps > oracle.maxConfidenceBps)
     throw new Error(
       `Confidence ${result.confidenceBps} exceeds market limit ${oracle.maxConfidenceBps}`,
