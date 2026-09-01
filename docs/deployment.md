@@ -5,16 +5,15 @@
 - Program: `8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
 - Program-data account: `GAWfb2YEN4CYsuUTQKT5Mwrb27XvKddjUgT5BHxjruVg`
 - Upgrade authority: `C3XiVurjF9ZcWoYfmEMqPTRikkrVWKGPw7V7yffvypZi`
-- Final verified deployment slot: `443381516`
-- Deployment transaction: `3eKgxAPV2iVyFzNzq4A1tJ2sR8TqhrS54triC1veymdUUA4iek8XyC3JNZPw7j6o4ZFfEeZBexDsGRCRnMCjfLeC`
-- Verification upgrade transaction: `2gqHs2SLGutw8idTsfWjkPWL27gV3QT6BfFJWtMuUTLpwX49HYzFYZCGeJKhwxP39uLJmY2GoR6wXWwbk1L8XSm8`
-- Verification PDA transaction: `ie7Sgmh6tsptzJmN7vKf3dHqti1GnPSV2qZEgTSfFbYp8YN3bUCC4AwxJrxfRYJFPc5gJTX7fwWrA2Bayb8zPDe`
+- Final verified deployment slot: `443399812`
+- Deployment transaction: `96PeZAPSahrUVttLTiogCq6BnDzrcqwQRAJu4BU97r59T6ERNL9yAfKENGrVRRccdLAgWzZYHhPgDNNDUV2VdFU`
+- Verification PDA transaction: `3x9YF5DvZSHxaZxTpQ6zvMj1GjKfuPVAKuubTGFaRC2utjv3DuUeYwmJsibfnv8YMhZZcAr1dYg6f5F7Zv8tgqBc`
 - Verification PDA: `C6CppStsMU85RncZg9pBZTuFWexev7CJJEmAER5yynZD`
-- Release source revision: `741bdca2534b0068bfd189db7e84d68d2f5a59cf`
+- Release source revision: `a0faa1a8884b3669378446a6ffdd6952643e6e94`
 - OtterSec verification: `https://verify.osec.io/status/8hDEL5BuW2BgeMuCBKqZyRubGTqFmx8Ds3PQ2k6puJym`
-- Release ELF: 149,576 bytes, SHA-256
-  `f37a3785bf8a72374a29b0f67d2301e838e35bbb1e7501d1434e35af98b8bd9a`
-- Verified executable hash: `4ce8a99bba80ec5d53af0ef58f3c6d6ca27de10b37479ea5f3a87fb264c5444d`
+- Release ELF: 154,256 bytes, SHA-256
+  `1eb0fec0cd67787df3e634c200d63dcc07f5366d54b0c106fae6dbfd6e5ebf93`
+- Verified executable hash: `dcb38a0486357ea2fce1d59d0f9b0aea2fc22ae8208d41fe3b0268fc231c2888`
 - Program-data allocation: 292,112 bytes; the release ELF matches the on-chain prefix exactly and
   all remaining upgrade-capacity bytes are zero.
 
