@@ -48,6 +48,20 @@ describe("optimized program ABI", () => {
     ).toThrow("unsupported Token-2022 extension type 1");
   });
 
+  it("accepts the Pump.fun Create V2 Token-2022 mint layout", () => {
+    // Create V2 uses a six-decimal mint with MetadataPointer (18), followed
+    // by the variable-length TokenMetadata record (19).
+    const pumpMint = new Uint8Array(185);
+    pumpMint[44] = 6;
+    pumpMint[45] = 1;
+    pumpMint[165] = 1;
+    pumpMint[166] = 18;
+    pumpMint[168] = 4;
+    pumpMint[174] = 19;
+    pumpMint[176] = 7;
+    expect(validateSupportedMintData(pumpMint, TOKEN_2022_PROGRAM_ID, "Pump.fun mint")).toBe(6);
+  });
+
   it("derives and creates canonical associated token accounts without the SPL client bundle", () => {
     const owner = PublicKey.unique();
     const mint = PublicKey.unique();

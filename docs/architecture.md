@@ -42,6 +42,11 @@ pointer, token group, group-member pointer, and token-group member are allowed. 
 hooks, permanent delegates, confidential transfers, pausable tokens, and other extensions that can
 change received balances or introduce external control.
 
+This allowlist covers Pump.fun Create V2 mints, which use Token-2022 with a metadata pointer and
+in-mint token metadata. Legacy pump.fun SPL Token mints remain supported through the legacy token
+program path. Mint ownership and extensions are always resolved from Solana accounts rather than
+trusted from an off-chain token API.
+
 ## Upgrades
 
 Development and early audited deployments remain upgradeable. The explicitly approved release
