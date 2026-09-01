@@ -12,6 +12,11 @@ export function liquidityTier(market: MarketView): LiquidityTier {
 }
 
 export const hasActiveBorrowing = (market: MarketView) => atomic(market.borrowedUsdc) > 0n;
+export const isRecentlyCreated = (market: MarketView, now = Date.now()) => {
+  if (!market.createdAt) return false;
+  const created = Date.parse(market.createdAt);
+  return Number.isFinite(created) && created <= now && now - created <= 14 * 86_400_000;
+};
 export const currentRateRisk = (market: MarketView) => {
   const apr = market.borrowAprBps ?? 0;
   if (apr > 1_000_000) return "experimental";
@@ -59,7 +64,7 @@ export function sortMarkets(markets: MarketView[], sort: MarketSort): MarketView
     .map(({ market }) => market);
 }
 
-export function homepageSections(markets: MarketView[]) {
+export function homepageSections(markets: MarketView[], now = Date.now()) {
   const used = new Set<string>();
   const take = (candidates: MarketView[]) =>
     candidates
@@ -72,7 +77,12 @@ export function homepageSections(markets: MarketView[]) {
   return {
     liquid: take(sortMarkets(markets, "liquidity")),
     active: take(sortMarkets(markets.filter(hasActiveBorrowing), "borrowed")),
-    new: take(sortMarkets(markets, "newest")),
+    new: take(
+      sortMarkets(
+        markets.filter((market) => isRecentlyCreated(market, now)),
+        "newest",
+      ),
+    ),
     experimental: take(markets.filter((market) => currentRateRisk(market) !== null)),
   };
 }

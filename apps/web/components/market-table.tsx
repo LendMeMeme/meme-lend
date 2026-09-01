@@ -84,11 +84,11 @@ export function MarketTable({ markets }: { markets: MarketView[] }) {
                   </td>
                   <td>
                     <strong>{formatApr(market.supplyAprBps)}</strong>
-                    <small>variable estimate</small>
+                    {market.supplyAprBps == null ? null : <small>variable estimate</small>}
                   </td>
                   <td>
                     <strong>{formatApr(market.borrowAprBps)}</strong>
-                    <small>variable rate</small>
+                    {market.borrowAprBps == null ? null : <small>variable rate</small>}
                   </td>
                   <td>
                     <strong>{money(market.availableUsdc)} available</strong>

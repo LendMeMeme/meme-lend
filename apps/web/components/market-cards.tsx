@@ -22,7 +22,8 @@ export function MarketCards({ markets }: { markets: MarketView[] }) {
               <div>
                 <dt>Lenders earn</dt>
                 <dd>
-                  {formatApr(market.supplyAprBps)} <small>variable</small>
+                  {formatApr(market.supplyAprBps)}{" "}
+                  {market.supplyAprBps == null ? null : <small>variable</small>}
                 </dd>
               </div>
               <div>

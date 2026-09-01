@@ -4,6 +4,7 @@ import {
   currentRateRisk,
   hasActiveBorrowing,
   homepageSections,
+  isRecentlyCreated,
   liquidityTier,
   sortMarkets,
 } from "./market-discovery";
@@ -56,5 +57,12 @@ describe("market discovery", () => {
           .map((m) => m.address),
       ).size,
     ).toBe(3);
+  });
+  it("requires a known recent creation time for the new section", () => {
+    const now = Date.parse("2026-09-01T12:00:00.000Z");
+    const unknown = market("1", "10");
+    const recent = { ...market("2", "10"), createdAt: "2026-08-31T12:00:00.000Z" };
+    expect(isRecentlyCreated(unknown, now)).toBe(false);
+    expect(isRecentlyCreated(recent, now)).toBe(true);
   });
 });
