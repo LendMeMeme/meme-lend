@@ -29,19 +29,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Oracle refresh is not configured" }, { status: 503 });
 
   let accepted = false;
-  for (const url of publishers) {
-    try {
-      const result = await fetch(`${url.replace(/\/+$/, "")}/refresh`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-oracle-refresh-secret": secret },
-        body: JSON.stringify({ market }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(15_000),
-      });
-      accepted ||= result.status === 202;
-    } catch {
-      // The next publisher may still complete or recover the round.
+  let published = false;
+  const errors = new Set<string>();
+
+  // A usable observation requires source zero to open a round and source one
+  // to confirm it. Run two passes so refresh still completes when the Railway
+  // primary/backup URLs are not in the same order as the immutable publishers.
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const url of publishers) {
+      try {
+        const result = await fetch(`${url.replace(/\/+$/, "")}/refresh`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-oracle-refresh-secret": secret },
+          body: JSON.stringify({ market }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(30_000),
+        });
+        const body = (await result.json().catch(() => ({}))) as {
+          error?: unknown;
+          published?: unknown;
+        };
+        accepted ||= result.status === 202;
+        published ||= body.published === true;
+        if (!result.ok && typeof body.error === "string") errors.add(body.error);
+      } catch (cause) {
+        errors.add(cause instanceof Error ? cause.message : "Publisher request failed");
+      }
     }
   }
-  return NextResponse.json({ accepted }, { status: accepted ? 202 : 503 });
+
+  return NextResponse.json(
+    { accepted, published, errors: [...errors] },
+    { status: accepted ? 202 : 503 },
+  );
 }
