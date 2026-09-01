@@ -15,6 +15,8 @@ export type PriceResult = {
   sources: string[];
 };
 
+type DexPool = { dex: string; price: number; liquidity: number };
+
 const finitePositive = (value: unknown): number | null => {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -34,7 +36,7 @@ export async function dexScreenerSample(
     `${config.dexScreenerUrl}/token-pairs/v1/solana/${encodeURIComponent(mint)}`,
   )) as unknown;
   if (!Array.isArray(raw)) throw new Error("DEX Screener returned an invalid payload");
-  const byDex = new Map<string, { price: number; liquidity: number }>();
+  const pools: DexPool[] = [];
   for (const pair of raw) {
     if (!pair || typeof pair !== "object") continue;
     const item = pair as Record<string, unknown>;
@@ -42,16 +44,15 @@ export async function dexScreenerSample(
     const liquidity = finitePositive((item.liquidity as Record<string, unknown> | undefined)?.usd);
     const dex = typeof item.dexId === "string" ? item.dexId : null;
     if (!price || !liquidity || !dex) continue;
-    const current = byDex.get(dex);
-    if (!current || liquidity > current.liquidity) byDex.set(dex, { price, liquidity });
+    pools.push({ dex, price, liquidity });
   }
-  const pools = [...byDex.values()].sort((a, b) => b.liquidity - a.liquidity).slice(0, 5);
-  const liquidityUsd = pools.reduce((sum, pool) => sum + pool.liquidity, 0);
-  if (pools.length < 2 || liquidityUsd < config.minimumLiquidityUsd)
-    throw new Error("Collateral lacks two independent liquid DEX venues");
-  const priceUsd = weightedMedian(pools.map((pool) => [pool.price, pool.liquidity]));
+  const consensus = selectDexConsensus(pools, config.maxSourceDeviationBps);
+  const liquidityUsd = consensus.reduce((sum, pool) => sum + pool.liquidity, 0);
+  if (consensus.length < 2 || liquidityUsd < config.minimumLiquidityUsd)
+    throw new Error("Collateral lacks two independent DEX venues with a consistent price");
+  const priceUsd = weightedMedian(consensus.map((pool) => [pool.price, pool.liquidity]));
   const spread = spreadBps(
-    pools.map((pool) => pool.price),
+    consensus.map((pool) => pool.price),
     priceUsd,
   );
   return {
@@ -63,6 +64,27 @@ export async function dexScreenerSample(
     },
     liquidityUsd,
   };
+}
+
+export function selectDexConsensus(pools: DexPool[], toleranceBps: number): DexPool[] {
+  let best: DexPool[] = [];
+  let bestLiquidity = 0;
+  for (const center of pools) {
+    const byDex = new Map<string, DexPool>();
+    for (const pool of pools) {
+      const deviation = (Math.abs(pool.price - center.price) / center.price) * 10_000;
+      if (deviation > toleranceBps) continue;
+      const current = byDex.get(pool.dex);
+      if (!current || pool.liquidity > current.liquidity) byDex.set(pool.dex, pool);
+    }
+    const cluster = [...byDex.values()];
+    const liquidity = cluster.reduce((sum, pool) => sum + pool.liquidity, 0);
+    if (cluster.length >= 2 && liquidity > bestLiquidity) {
+      best = cluster;
+      bestLiquidity = liquidity;
+    }
+  }
+  return best;
 }
 
 export async function jupiterSample(mint: string, config: PublisherConfig): Promise<PriceSample> {
